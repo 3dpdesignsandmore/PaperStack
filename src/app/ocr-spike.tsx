@@ -12,11 +12,13 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import type { InvisibleTextSpikeResult } from '@/lib/spikes/invisible-text';
 import { runInvisibleTextSpike } from '@/lib/spikes/invisible-text';
+import { shareSpikePdf } from '@/lib/spikes/share-pdf';
 
 export default function OcrSpikeScreen() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<InvisibleTextSpikeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   async function runSpike() {
     setRunning(true);
@@ -30,6 +32,21 @@ export default function OcrSpikeScreen() {
       setError(message);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function shareResult() {
+    if (result == null) {
+      return;
+    }
+    setSharing(true);
+    try {
+      await shareSpikePdf('invisible-text.pdf', result.pdfBytes);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(`Share failed: ${message}`);
+    } finally {
+      setSharing(false);
     }
   }
 
@@ -75,6 +92,14 @@ export default function OcrSpikeScreen() {
                       : result.checks.extractedTextMatches
                   }`}
               </ThemedText>
+              <Pressable
+                onPress={shareResult}
+                disabled={sharing}
+                style={styles.button}>
+                <ThemedText type="defaultSemiBold" style={styles.buttonText}>
+                  {sharing ? 'Sharing…' : 'Share PDF'}
+                </ThemedText>
+              </Pressable>
             </ThemedView>
           )}
         </ScrollView>
