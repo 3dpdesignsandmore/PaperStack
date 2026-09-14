@@ -11,8 +11,7 @@
  * would be defensible, but sharing the same convention as production code
  * keeps one canonical write path.
  */
-import { File, Paths } from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
+import { Directory, File, Paths } from 'expo-file-system';
 
 /** Where the exported file landed, for display. */
 export interface ShareResult {
@@ -34,13 +33,19 @@ export async function shareSpikePdf(
     throw new Error(`fileName must end in .pdf, got "${fileName}"`);
   }
 
-  const dir = new File(Paths.document, 'spike-artifacts');
+  const dir = new Directory(Paths.document, 'spike-artifacts');
   if (!dir.exists) {
     dir.create({ intermediates: true, idempotent: true });
   }
   const file = new File(dir, fileName);
   file.write(pdfBytes);
 
+  // Dynamic import on purpose: expo-sharing resolves its native module at
+  // import time, so a module-scope import crashes the entire route when the
+  // installed dev build predates it (JS over Metro can be newer than the
+  // binary). Keeping it inside the call confines the failure to a catchable
+  // error on the Share button.
+  const Sharing = await import('expo-sharing');
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error('Sharing is not available on this device');
   }
