@@ -59,3 +59,34 @@ There is no test suite configured yet. `npm run reset-project` (runs `scripts/re
 - Never duplicate a function body across files — extract shared logic (type guards, formatters, converters, validators) into `src/` and import it everywhere.
 
 Skipped from the source skill as not applicable here: the Vue-specific rules (props/emits typing, template refs, `reactive`/`computed`, `v-html` sanitization, `Object.assign` guidance — this is React/Expo, not Vue) and the whole `apiGet`/`apiPost`/API-layering section (that skill's axios-based client, logger, and OpenAPI-generation conventions belong to a different codebase; this app has no backend integration yet). If PaperStack grows an API layer, its analogues are worth adopting then: one canonical response interface per endpoint, HTTP status as the success signal (no `result: 'OK'`/`success` flags), one client boundary instead of calling `fetch` ad hoc, and `fetch`-prefixed names for data-loading functions.
+
+---
+
+## Product context
+
+PaperStack scans documents and receipts, annotates them, and exports/shares them as PDFs. The signature feature is packing multiple receipts onto a single page instead of one receipt per page. Full design lives in `plan/PLAN.md` — read it before implementing a feature, and keep it updated when a decision changes.
+
+### Locked decisions
+
+- **Platforms: iOS + Android only. Web is out.** Do not reintroduce `react-native-web`, `react-dom`, a `web` block in `app.json`, or `.web.tsx` variants. The scanner and OCR are native-only, so a web build cannot run the product.
+- **Storage is on-device only.** No backend, no accounts, no network calls for user data. "Nothing leaves your device" is the App Store privacy claim — do not add analytics, telemetry, or any SDK that phones home. Crash reporting, if ever added, must be crash-only with no identifiers and no breadcrumb content.
+- **OCR is on-device** (Apple Vision / ML Kit) and produces both an invisible searchable text layer in exported PDFs and extracted receipt fields.
+- **Sharing is the OS share sheet plus saved recipients.** No mail service, no API keys.
+- **Public store release is the target**, so store requirements (permission strings, privacy policy, privacy nutrition label) are in scope, not deferred.
+
+### Constraints that bite
+
+- **Expo Go cannot run this app.** The scanner, OCR, and Skia are native modules. Development uses `expo-dev-client` with an EAS development build; `npx expo start --dev-client`. Do not eject to bare React Native — Expo config plugins cover the native wiring and EAS Build is what allows iOS releases without a Mac.
+- **`experiments.reactCompiler` is enabled.** Do not hand-write `useMemo`, `useCallback`, or `React.memo`; the compiler handles memoization. Reanimated worklets and Skia shared values are the exception — those still need explicit `useSharedValue` / `useDerivedValue`.
+- **`expo-file-system` uses the new `File` / `Directory` class API** (SDK 54+). The old function-based API is `expo-file-system/legacy` — do not write new code against it. Most training data and tutorials predate this split.
+- **Scans and PDFs go in the documents directory**, never `Caches` or `tmp`. iOS backs the documents directory up to iCloud automatically, which is the app's entire backup story; `Caches` is excluded from backup and may be purged by the OS.
+- **Install Expo packages with `npx expo install`, never `npm install`**, so versions stay aligned with SDK 57.
+- Check <https://docs.expo.dev/versions/v57.0.0/> before writing code against an Expo package — several APIs changed materially in SDK 54–57.
+
+### Redaction is a security feature
+
+If implementing `AnnotationType.Redaction`: drawing an opaque rectangle over an embedded image in a PDF hides nothing, because the original pixels remain in the file and are recoverable by deleting the overlay. The export path must flatten the redaction into the image bitmap and embed the flattened result, and must strip any OCR block intersecting a redaction rect before writing the invisible text layer. Keep the unredacted original on disk so the user can undo in-app, but it must never reach an exported PDF. Do not ship this feature until verified against an actual exported file.
+
+### Geometry belongs in a pure module
+
+The multi-receipt page-packing math lives in `src/lib/layout/` as dependency-free functions (no React, no native modules) so it can be unit tested in isolation. Do not inline page geometry into component render logic. See `plan/PLAN.md` §5 for the algorithm and the legibility thresholds.

@@ -38,6 +38,12 @@ yarn-error.*
 
 example
 
+# spike artifacts (regenerable via scripts/verify-invisible-text.mts)
+spike-artifacts/
+
+# local dev build APKs
+*.apk
+
 # generated native folders
 /ios
 /android

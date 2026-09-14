@@ -1,6 +1,6 @@
 import * as Device from 'expo-device';
 import { useRouter } from 'expo-router';
-import { Platform, Pressable, StyleSheet } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -47,7 +47,16 @@ export default function HomeScreen() {
         <Pressable
           style={styles.spikeButton}
           android_ripple={{ color: '#208AEF' }}
-          onPress={() => router.push('/ocr-spike')}>
+          onPress={() => {
+            console.log('[spike] Run OCR spike pressed');
+            try {
+              router.push('/ocr-spike');
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : String(e);
+              console.error(`[spike] router.push failed: ${message}`);
+              Alert.alert('Spike nav failed', message);
+            }
+          }}>
           <ThemedText type="defaultSemiBold" style={styles.spikeButtonText}>
             Run OCR spike
           </ThemedText>
