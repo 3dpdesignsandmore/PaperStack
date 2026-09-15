@@ -38,7 +38,9 @@ import {
     moveText,
     PDFArray,
     PDFDocument,
+    PDFOperator,
     PDFRawStream,
+    PDFStream,
     setFontAndSize,
     setTextRenderingMode,
     showText,
@@ -119,7 +121,7 @@ export async function runInvisibleTextSpike(): Promise<InvisibleTextSpikeResult>
   const fontKey = page.node.newFontDictionaryKey('F');
   page.node.setFontDictionary(fontKey, font.ref);
 
-  const ops = [];
+  const ops: PDFOperator[] = [];
   OcrLines.forEach((line, i) => {
     ops.push(
       beginText(),
@@ -141,8 +143,11 @@ export async function runInvisibleTextSpike(): Promise<InvisibleTextSpikeResult>
   let contentText = '';
   if (contents instanceof PDFArray) {
     for (let idx = 0, len = contents.size(); idx < len; idx++) {
-      const stream = reloaded.context.lookup(contents.get(idx), PDFRawStream);
-      if (stream !== undefined) {
+      // `lookup` only has an overload for the base `PDFStream`, not the
+      // `PDFRawStream` subclass `decodePDFRawStream` actually needs — look
+      // up the base type, then narrow.
+      const stream = reloaded.context.lookup(contents.get(idx), PDFStream);
+      if (stream instanceof PDFRawStream) {
         contentText += latin1(decodePDFRawStream(stream).decode());
       }
     }
@@ -231,6 +236,9 @@ function hexForWord(word: string): string {
 /** Is this running inside React Native (Hermes) rather than Node? */
 function isReactNative(): boolean {
   // `navigator.product` was removed from modern React Native; Hermes sets
-  // HermesInternal. Node defines neither.
-  return typeof globalThis.HermesInternal === 'object';
+  // the ambient `HermesInternal` global (typed by react-native's own
+  // globals.d.ts as a bare global, not a `globalThis` property — hence
+  // referencing the identifier directly rather than `globalThis.…`). Node
+  // defines neither.
+  return typeof HermesInternal === 'object';
 }
