@@ -1,7 +1,9 @@
 /**
  * Library screen (plan §8): grid of scanned documents, filterable by kind.
- * Phase 0 state: empty-state UI pointing at the Scan tab; the grid fills in
- * Phase 1 when scans land on disk and in SQLite.
+ * Lives at the `/` route (file must be index.tsx — the launch URL must
+ * resolve), labeled "Library" in the tab bar. Phase 0 state: empty-state
+ * UI pointing at the Scan tab; the grid fills in Phase 1 when scans land
+ * on disk and in SQLite.
  */
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
