@@ -44,6 +44,9 @@ spike-artifacts/
 # local dev build APKs
 *.apk
 
+# downloaded EAS build logs (inspection artifacts)
+build.log
+
 # generated native folders
 /ios
 /android
