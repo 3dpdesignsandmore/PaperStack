@@ -179,7 +179,8 @@ export default function LibraryScreen() {
               Compose {selected.size} into packed PDF
             </ThemedText>
           </Pressable>
-        )}      </SafeAreaView>
+        )}
+      </SafeAreaView>
     </ThemedView>
   );
 }
