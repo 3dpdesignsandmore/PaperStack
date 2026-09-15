@@ -38,10 +38,12 @@
     "eslint-config-expo": "~57.0.2",
     "pdf-parse": "^2.4.5",
     "tsx": "^4.23.13",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.0"
   },
   "scripts": {
     "start": "expo start",
+    "test": "vitest run",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",

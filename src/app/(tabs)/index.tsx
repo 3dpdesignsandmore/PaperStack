@@ -21,9 +21,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLibrary } from '@/lib/db/queries';
-import type { LibraryEntry } from '@/lib/model';
-
-/** Columns in the library grid. */
+import type { LibraryEntry } from '@/lib/model';/** Columns in the library grid. */
 const NUM_COLUMNS = 2;
 
 export default function LibraryScreen() {
@@ -32,6 +30,8 @@ export default function LibraryScreen() {
   const router = useRouter();
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setEntries(await fetchLibrary(db));
@@ -44,6 +44,18 @@ export default function LibraryScreen() {
       load();
     }, [load]),
   );
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   async function onRefresh() {
     setRefreshing(true);
@@ -65,6 +77,18 @@ export default function LibraryScreen() {
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               {entries.length} document{entries.length === 1 ? '' : 's'}
             </ThemedText>
+          )}
+          {entries != null && entries.length > 0 && (
+            <Pressable
+              style={styles.selectToggle}
+              onPress={() => {
+                setSelecting((s) => !s);
+                setSelected(new Set());
+              }}>
+              <ThemedText type="defaultSemiBold" style={styles.selectToggleText}>
+                {selecting ? 'Done' : 'Select'}
+              </ThemedText>
+            </Pressable>
           )}
         </ThemedView>
 
@@ -94,8 +118,23 @@ export default function LibraryScreen() {
             renderItem={({ item }) => (
               <Pressable
                 style={styles.card}
-                onPress={() => router.push(`/document/${item.id}`)}>
-                <ThemedView type="backgroundElement" style={styles.cardInner}>
+                onPress={() => {
+                  if (selecting) {
+                    toggleSelected(item.id);
+                  } else {
+                    router.push(`/document/${item.id}`);
+                  }
+                }}>
+                <ThemedView
+                  type="backgroundElement"
+                  style={[
+                    styles.cardInner,
+                    selecting &&
+                      selected.has(item.id) && {
+                        borderColor: '#208AEF',
+                        borderWidth: 2,
+                      },
+                  ]}>
                   <Image
                     source={{ uri: item.firstThumbPath ?? undefined }}
                     style={styles.thumbnail}
@@ -103,6 +142,13 @@ export default function LibraryScreen() {
                     recyclingKey={item.id}
                     transition={150}
                   />
+                  {selecting && selected.has(item.id) && (
+                    <ThemedView style={styles.checkBadge}>
+                      <ThemedText type="smallBold" style={styles.checkText}>
+                        ✓
+                      </ThemedText>
+                    </ThemedView>
+                  )}
                   <ThemedText
                     type="smallBold"
                     style={styles.cardTitle}
@@ -120,7 +166,20 @@ export default function LibraryScreen() {
             )}
           />
         )}
-      </SafeAreaView>
+        {selecting && selected.size > 0 && (
+          <Pressable
+            style={styles.composeBar}
+            onPress={() =>
+              router.push({
+                pathname: '/compose',
+                params: { ids: Array.from(selected).join(',') },
+              })
+            }>
+            <ThemedText type="defaultSemiBold" style={styles.composeBarText}>
+              Compose {selected.size} into packed PDF
+            </ThemedText>
+          </Pressable>
+        )}      </SafeAreaView>
     </ThemedView>
   );
 }
@@ -144,10 +203,13 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
     paddingBottom: Spacing.three,
-    gap: Spacing.one,
+    gap: Spacing.two,
   },
   title: {
     fontSize: 32,
@@ -195,5 +257,42 @@ const styles = StyleSheet.create({
   },
   cardDetail: {
     paddingHorizontal: Spacing.one,
+  },
+  selectToggle: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two,
+    borderRadius: 999,
+    borderColor: '#208AEF',
+    borderWidth: 1,
+  },
+  selectToggleText: {
+    color: '#208AEF',
+  },
+  checkBadge: {
+    position: 'absolute',
+    top: Spacing.one,
+    right: Spacing.one,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#208AEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkText: {
+    color: '#FFFFFF',
+  },
+  composeBar: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
+    bottom: BottomTabInset + Spacing.two,
+    borderRadius: 999,
+    paddingVertical: Spacing.two,
+    alignItems: 'center',
+    backgroundColor: '#208AEF',
+  },
+  composeBarText: {
+    color: '#FFFFFF',
   },
 });
