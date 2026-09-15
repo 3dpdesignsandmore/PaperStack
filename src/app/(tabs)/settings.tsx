@@ -9,6 +9,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
+import { AppCard } from '@/components/app-card';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -85,9 +86,7 @@ export default function SettingsScreen() {
             Settings
           </ThemedText>
 
-          <ThemedView
-            type="backgroundElement"
-            style={[styles.section, { borderColor: theme.border }]}>
+          <AppCard style={styles.section}>
             <ThemedText type="label" style={{ color: theme.textSecondary }}>
               Defaults
             </ThemedText>
@@ -107,13 +106,10 @@ export default function SettingsScreen() {
                 onPress={() => setEditing(true)}
               />
             </ThemedView>
-          </ThemedView>
+          </AppCard>
 
           {SECTIONS.map((section) => (
-            <ThemedView
-              key={section.title}
-              type="backgroundElement"
-              style={[styles.section, { borderColor: theme.border }]}>
+            <AppCard key={section.title} style={styles.section}>
               <ThemedText type="label" style={{ color: theme.textSecondary }}>
                 {section.label}
               </ThemedText>
@@ -121,13 +117,11 @@ export default function SettingsScreen() {
               <ThemedText type="small" style={styles.rowDetail}>
                 {section.detail}
               </ThemedText>
-            </ThemedView>
+            </AppCard>
           ))}
 
           {__DEV__ && (
-            <ThemedView
-              type="backgroundElement"
-              style={[styles.section, { borderColor: theme.border }]}>
+            <AppCard style={styles.section}>
               <ThemedText type="label" style={{ color: theme.textSecondary }}>
                 Dev only
               </ThemedText>
@@ -141,7 +135,7 @@ export default function SettingsScreen() {
                 onPress={() => router.push('/ocr-spike')}
                 style={styles.devButton}
               />
-            </ThemedView>
+            </AppCard>
           )}
         </ScrollView>
       </SafeAreaView>

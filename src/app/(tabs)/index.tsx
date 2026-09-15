@@ -14,15 +14,19 @@ import {
     RefreshControl,
     StyleSheet,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { BottomTabInset, CardShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLibrary } from '@/lib/db/queries';
-import type { LibraryEntry } from '@/lib/model'; /** Columns in the library grid. */
+import type { LibraryEntry } from '@/lib/model';
+
+/** Columns in the library grid. */
 const NUM_COLUMNS = 2;
 
 export default function LibraryScreen() {
@@ -125,65 +129,18 @@ export default function LibraryScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
             renderItem={({ item }) => (
-              <Pressable
-                style={styles.card}
+              <LibraryCard
+                item={item}
+                selecting={selecting}
+                selected={selected.has(item.id)}
                 onPress={() => {
                   if (selecting) {
                     toggleSelected(item.id);
                   } else {
                     router.push(`/document/${item.id}`);
                   }
-                }}>
-                <ThemedView
-                  type="backgroundElement"
-                  style={[
-                    styles.cardInner,
-                    { borderColor: theme.border },
-                    selecting &&
-                      selected.has(item.id) && {
-                        borderColor: theme.accent,
-                        borderWidth: 2,
-                      },
-                  ]}>
-                  <Image
-                    source={{ uri: item.firstThumbPath ?? undefined }}
-                    style={styles.thumbnail}
-                    contentFit="cover"
-                    recyclingKey={item.id}
-                    transition={150}
-                  />
-                  {selecting && selected.has(item.id) && (
-                    <ThemedView
-                      style={[
-                        styles.checkBadge,
-                        {
-                          backgroundColor: theme.accent,
-                          borderColor: theme.background,
-                        },
-                      ]}>
-                      <ThemedText
-                        type="smallBold"
-                        style={[styles.checkText, { color: theme.accentText }]}>
-                        {'✓'}
-                      </ThemedText>
-                    </ThemedView>
-                  )}
-                  <ThemedView style={styles.cardBody}>
-                    <ThemedText
-                      type="smallBold"
-                      style={styles.cardTitle}
-                      numberOfLines={1}>
-                      {item.title}
-                    </ThemedText>
-                    <ThemedText
-                      type="small"
-                      style={[styles.cardDetail, { color: theme.textSecondary }]}>
-                      {formatDate(item.createdAt)} · {item.pageCount} page
-                      {item.pageCount === 1 ? '' : 's'}
-                    </ThemedText>
-                  </ThemedView>
-                </ThemedView>
-              </Pressable>
+                }}
+              />
             )}
           />
         )}
@@ -201,6 +158,71 @@ export default function LibraryScreen() {
         )}
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+/** Props for {@link LibraryCard}. */
+interface LibraryCardProps {
+  item: LibraryEntry;
+  selecting: boolean;
+  selected: boolean;
+  onPress: () => void;
+}
+
+/**
+ * One grid cell: thumbnail, title, detail line, with press feedback and a
+ * shadow. Its own component (not inlined in `renderItem`) because
+ * `usePressScale` is a hook — `renderItem` is a plain callback invoked per
+ * row, not a component instance, so a hook can't live there directly.
+ *
+ * The shadow lives on the wrapper around `cardInner` rather than on
+ * `cardInner` itself: `cardInner` sets `overflow: 'hidden'` to clip the
+ * thumbnail's corners, and `overflow: 'hidden'` would clip the shadow too.
+ */
+function LibraryCard({ item, selecting, selected, onPress }: LibraryCardProps) {
+  const theme = useTheme();
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+
+  return (
+    <Pressable style={styles.card} onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+      <Animated.View style={[CardShadow, animatedStyle]}>
+        <ThemedView
+          type="backgroundElement"
+          style={[
+            styles.cardInner,
+            { borderColor: theme.border },
+            selecting && selected && { borderColor: theme.accent, borderWidth: 2 },
+          ]}>
+          <Image
+            source={{ uri: item.firstThumbPath ?? undefined }}
+            style={styles.thumbnail}
+            contentFit="cover"
+            recyclingKey={item.id}
+            transition={150}
+          />
+          {selecting && selected && (
+            <ThemedView
+              style={[
+                styles.checkBadge,
+                { backgroundColor: theme.accent, borderColor: theme.background },
+              ]}>
+              <ThemedText type="smallBold" style={[styles.checkText, { color: theme.accentText }]}>
+                {'✓'}
+              </ThemedText>
+            </ThemedView>
+          )}
+          <ThemedView style={styles.cardBody}>
+            <ThemedText type="smallBold" style={styles.cardTitle} numberOfLines={1}>
+              {item.title}
+            </ThemedText>
+            <ThemedText type="small" style={[styles.cardDetail, { color: theme.textSecondary }]}>
+              {formatDate(item.createdAt)} · {item.pageCount} page
+              {item.pageCount === 1 ? '' : 's'}
+            </ThemedText>
+          </ThemedView>
+        </ThemedView>
+      </Animated.View>
+    </Pressable>
   );
 }
 

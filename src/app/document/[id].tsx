@@ -12,6 +12,7 @@ import { Alert, FlatList, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
+import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ScreenHeader } from '@/components/screen-header';
@@ -195,9 +196,7 @@ export default function DocumentDetailScreen() {
         keyExtractor={(page) => page.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => (
-          <ThemedView
-            type="backgroundElement"
-            style={[styles.pageCard, { borderColor: theme.border }]}>
+          <AppCard style={styles.pageCard}>
             <Image
               source={{ uri: item.imagePath }}
               style={styles.pageImage}
@@ -208,7 +207,7 @@ export default function DocumentDetailScreen() {
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               Page {index + 1} of {pages.length} · {item.widthPx}×{item.heightPx}
             </ThemedText>
-          </ThemedView>
+          </AppCard>
         )}
       />
 

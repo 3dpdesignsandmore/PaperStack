@@ -17,9 +17,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
+import { AppCard } from '@/components/app-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { BottomTabInset, CardShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistScanSession } from '@/lib/db/persist-scan';
@@ -106,9 +107,7 @@ export default function ScanScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.card, { borderColor: theme.border }]}>
+        <AppCard style={styles.card}>
           <ThemedView style={styles.labelWrap}>
             <ThemedText type="label" style={{ color: theme.accent }}>
               Capture
@@ -127,7 +126,7 @@ export default function ScanScreen() {
             disabled={scanning}
             style={styles.scanButton}
           />
-        </ThemedView>
+        </AppCard>
       </SafeAreaView>
 
       {/*
@@ -192,7 +191,7 @@ function SaveScanDialog({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable
-          style={[styles.dialogCard, { backgroundColor: theme.background, borderColor: theme.border }]}
+          style={[styles.dialogCard, CardShadow, { backgroundColor: theme.background, borderColor: theme.border }]}
           onPress={(e) => e.stopPropagation()}>
           <ThemedText type="subtitle">Save {pageCount} page{pageCount === 1 ? '' : 's'}</ThemedText>
           <ThemedText type="small" style={[styles.dialogMessage, { color: theme.textSecondary }]}>

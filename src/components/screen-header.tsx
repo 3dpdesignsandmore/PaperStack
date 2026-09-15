@@ -28,7 +28,7 @@ export function ScreenHeader({ title, onBack }: ScreenHeaderProps) {
   const router = useRouter();
 
   return (
-    <ThemedView style={styles.row}>
+    <ThemedView style={[styles.row, { borderBottomColor: theme.border }]}>
       <Pressable
         onPress={onBack ?? (() => router.back())}
         hitSlop={12}
@@ -60,6 +60,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
     gap: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backButton: {
     width: SIDE_WIDTH,

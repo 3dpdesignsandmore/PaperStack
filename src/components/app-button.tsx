@@ -4,9 +4,11 @@
  * look identical everywhere they appear.
  */
 import { ActivityIndicator, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Spacing } from '@/constants/theme';
+import { glowShadow, Radius, Spacing } from '@/constants/theme';
+import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Visual variants of {@link AppButton}. */
@@ -37,6 +39,7 @@ export function AppButton({
   style,
 }: AppButtonProps) {
   const theme = useTheme();
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
 
   const backgroundColor =
     variant === 'filled' ? theme.accent : 'transparent';
@@ -45,25 +48,28 @@ export function AppButton({
   // Filled uses accentText; outlines use their own border color.
   const textColor =
     variant === 'filled' ? theme.accentText : variant === 'danger' ? theme.danger : theme.accent;
+  // The filled variant is the primary action — give it a soft glow rather
+  // than a flat fill. A black shadow would barely show against this app's
+  // dark background; a colored glow stays visible in both themes.
+  const glow = variant === 'filled' && !disabled ? glowShadow(theme.accent) : null;
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={[
-        styles.button,
-        { backgroundColor, borderColor },
-        disabled && styles.disabled,
-        style,
-      ]}>
-      {loading ? (
-        <ActivityIndicator color={textColor} />
-      ) : (
-        <ThemedText type="defaultSemiBold" style={{ color: textColor }}>
-          {label}
-        </ThemedText>
-      )}
-    </Pressable>
+    <Animated.View style={[glow, animatedStyle, style]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        disabled={disabled}
+        style={[styles.button, { backgroundColor, borderColor }, disabled && styles.disabled]}>
+        {loading ? (
+          <ActivityIndicator color={textColor} />
+        ) : (
+          <ThemedText type="defaultSemiBold" style={{ color: textColor }}>
+            {label}
+          </ThemedText>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 

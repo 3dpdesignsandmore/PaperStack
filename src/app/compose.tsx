@@ -20,14 +20,17 @@ import {
     useWindowDimensions,
     View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
+import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Radius, Spacing } from '@/constants/theme';
+import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchDocument, fetchPages } from '@/lib/db/queries';
 import { LETTER } from '@/lib/layout/pack-columns';
@@ -208,35 +211,36 @@ export default function ComposeScreen() {
           {/* Live preview: the true packed geometry, scaled down. */}
           {layout != null && (
             <View style={styles.previewRow}>
-              {layout.pages.slice(0, 3).map((page, pageIdx) => (
-                <View
-                  key={pageIdx}
-                  style={[
-                    styles.previewPage,
-                    {
-                      width: previewWidth / 3 - Spacing.two,
-                      height:
-                        ((previewWidth / 3 - Spacing.two) * LETTER.height) /
-                        LETTER.width,
-                    },
-                  ]}>
-                  {page.items.map((item) => (
-                    <View
-                      key={item.id}
-                      style={{
-                        position: 'absolute',
-                        left: item.x * previewScale * (1 / 3),
-                        top: (LETTER.height - item.y - item.height) * previewScale * (1 / 3),
-                        width: item.width * previewScale * (1 / 3),
-                        height: item.height * previewScale * (1 / 3),
-                        backgroundColor: theme.backgroundSelected,
-                        borderColor: theme.textSecondary,
-                        borderWidth: 0.5,
-                      }}
-                    />
-                  ))}
-                </View>
-              ))}
+              {layout.pages.slice(0, 3).map((page, pageIdx) => {
+                const pageWidth = previewWidth / 3 - Spacing.two;
+                const pageHeight = (pageWidth * LETTER.height) / LETTER.width;
+                return (
+                  // The shadow lives on this sizing wrapper, not on
+                  // `previewPage` itself — that view clips its children
+                  // (the packed item rects) with `overflow: 'hidden'`,
+                  // which would clip the shadow too. A soft shadow here
+                  // also just reads as a sheet of paper, which is the point.
+                  <View key={pageIdx} style={[{ width: pageWidth, height: pageHeight }, CardShadow]}>
+                    <View style={styles.previewPage}>
+                      {page.items.map((item) => (
+                        <View
+                          key={item.id}
+                          style={{
+                            position: 'absolute',
+                            left: item.x * previewScale * (1 / 3),
+                            top: (LETTER.height - item.y - item.height) * previewScale * (1 / 3),
+                            width: item.width * previewScale * (1 / 3),
+                            height: item.height * previewScale * (1 / 3),
+                            backgroundColor: theme.backgroundSelected,
+                            borderColor: theme.textSecondary,
+                            borderWidth: 0.5,
+                          }}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
               {layout.pages.length > 3 && (
                 <ThemedText type="small">
                   +{layout.pages.length - 3} more page(s)
@@ -255,30 +259,11 @@ export default function ComposeScreen() {
               : ''}
           </ThemedText>
 
-          <ThemedView
-            type="backgroundElement"
-            style={[styles.controlCard, { borderColor: theme.border }]}>
+          <AppCard style={styles.controlCard}>
             <ThemedText type="defaultSemiBold">Columns: {columns}</ThemedText>
             <View style={styles.stepperRow}>
               {[2, 3, 4, 6].map((c) => (
-                <Pressable
-                  key={c}
-                  style={[
-                    styles.columnChip,
-                    { borderColor: theme.border },
-                    c === columns && { borderColor: theme.accent, backgroundColor: theme.accent },
-                  ]}
-                  onPress={() => setColumns(c)}>
-                  <ThemedText
-                    type="defaultSemiBold"
-                    style={
-                      c === columns
-                        ? { color: theme.accentText }
-                        : { color: theme.text }
-                    }>
-                    {c}
-                  </ThemedText>
-                </Pressable>
+                <ColumnChip key={c} count={c} active={c === columns} onPress={() => setColumns(c)} />
               ))}
             </View>
 
@@ -290,7 +275,7 @@ export default function ComposeScreen() {
               <ThemedText type="small">Captions</ThemedText>
               <Switch value={captions} onValueChange={setCaptions} />
             </ThemedView>
-          </ThemedView>
+          </AppCard>
 
           <AppButton
             label={exporting ? 'Exporting…' : blocked ? 'Review before exporting' : 'Export packed PDF'}
@@ -302,6 +287,39 @@ export default function ComposeScreen() {
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+/** Props for {@link ColumnChip}. */
+interface ColumnChipProps {
+  count: number;
+  active: boolean;
+  onPress: () => void;
+}
+
+/**
+ * One column-count option. Its own component (not inlined in the `.map()`
+ * that renders the four options) because `usePressScale` is a hook, and
+ * hooks can't be called inside a loop callback.
+ */
+function ColumnChip({ count, active, onPress }: ColumnChipProps) {
+  const theme = useTheme();
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+
+  return (
+    <Pressable onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+      <Animated.View
+        style={[
+          styles.columnChip,
+          { borderColor: theme.border },
+          active && { borderColor: theme.accent, backgroundColor: theme.accent },
+          animatedStyle,
+        ]}>
+        <ThemedText type="defaultSemiBold" style={{ color: active ? theme.accentText : theme.text }}>
+          {count}
+        </ThemedText>
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -328,6 +346,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   previewPage: {
+    flex: 1,
     backgroundColor: '#FFFFFF',
     borderColor: '#808080',
     borderWidth: 1,

@@ -78,3 +78,44 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+/**
+ * Cross-platform card elevation. RN ignores `shadow*` props on Android and
+ * ignores `elevation` everywhere else, so a shadow that shows up on every
+ * platform needs both. A plain black shadow barely reads against this
+ * app's near-black dark background — depth there comes mainly from the
+ * `background` → `backgroundElement` → `backgroundSelected` lightness
+ * steps in {@link Colors} — so this is a light touch, not the primary
+ * depth cue.
+ */
+export const CardShadow = Platform.select({
+  android: { elevation: 3 },
+  default: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+  },
+}) as object;
+
+/**
+ * Soft colored glow behind an emphasis surface (the primary export/scan
+ * button, a destructive action). Unlike a black shadow, a colored glow
+ * stays visible against a dark background — that's deliberate: it's the
+ * one place this app leans on shadow for "flare" rather than depth.
+ * Android's `elevation` cannot easily take a color, so it falls back to a
+ * plain (if slightly more pronounced) elevation there.
+ */
+export function glowShadow(color: string): object {
+  return (
+    Platform.select({
+      android: { elevation: 6 },
+      default: {
+        shadowColor: color,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+      },
+    }) ?? {}
+  );
+}
