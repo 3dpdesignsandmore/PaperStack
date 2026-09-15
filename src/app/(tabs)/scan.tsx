@@ -9,16 +9,24 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
+import { PromptDialog } from '@/components/prompt-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { DocumentKind } from '@/lib/model';
-import { persistScanSession } from '@/lib/db/persist-scan';
+import { useTheme } from '@/hooks/use-theme';
+import { appendScanSession, persistScanSession } from '@/lib/db/persist-scan';
+import { fetchLibrary } from '@/lib/db/queries';
+import { DocumentKind, type LibraryEntry } from '@/lib/model';
 import { scanPages } from '@/lib/scanner';
 
 export default function ScanScreen() {
   const [scanning, setScanning] = useState(false);
   const db = useSQLiteContext();
+  const theme = useTheme();
+
+  // Pending session awaiting a save decision (name + new-vs-append).
+  const [pendingUris, setPendingUris] = useState<string[] | null>(null);
+  const [recentDocs, setRecentDocs] = useState<LibraryEntry[]>([]);
 
   async function startScan() {
     setScanning(true);
@@ -27,16 +35,44 @@ export default function ScanScreen() {
       if (pageUris.length === 0) {
         return; // user cancelled
       }
-      await persistScanSession(db, pageUris, 'Untitled scan', DocumentKind.Document);
-      Alert.alert(
-        'Scan complete',
-        `${pageUris.length} page(s) captured and saved to Library.`,
-      );
+      // Capture the session, then ask how to file it before persisting.
+      setRecentDocs(await fetchLibrary(db));
+      setPendingUris(pageUris);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       Alert.alert('Scan failed', message);
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function saveAsNew(title: string) {
+    if (pendingUris == null) {
+      return;
+    }
+    const uris = pendingUris;
+    setPendingUris(null);
+    try {
+      await persistScanSession(db, uris, title, DocumentKind.Document);
+      Alert.alert('Saved', `"${title}" is in your Library.`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Save failed', message);
+    }
+  }
+
+  async function saveAppend(target: LibraryEntry) {
+    if (pendingUris == null) {
+      return;
+    }
+    const uris = pendingUris;
+    setPendingUris(null);
+    try {
+      await appendScanSession(db, uris, target.id);
+      Alert.alert('Saved', `Added to "${target.title}".`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Save failed', message);
     }
   }
 
@@ -61,6 +97,39 @@ export default function ScanScreen() {
           </Pressable>
         </ThemedView>
       </SafeAreaView>
+
+      {/* Save flow: name it, then file as new or append to an existing
+          library entry. */}
+      <PromptDialog
+        visible={pendingUris != null}
+        title={pendingUris != null ? `Save ${pendingUris.length} page(s)` : ''}
+        message={
+          recentDocs.length > 0
+            ? 'Name this scan as a new document, or add these pages to an existing one below.'
+            : 'Name this scan.'
+        }
+        placeholder="e.g. Groceries Sept 14"
+        confirmLabel="Save as new"
+        initialValue=""
+        onConfirm={saveAsNew}
+        onCancel={() => setPendingUris(null)}
+      />
+
+      {/* Append picker — shown while the save dialog is open. */}
+      {pendingUris != null && recentDocs.length > 0 && (
+        <ThemedView type="backgroundElement" style={styles.appendSheet}>
+          {recentDocs.slice(0, 10).map((doc) => (
+            <Pressable key={doc.id} onPress={() => saveAppend(doc)} style={styles.appendRow}>
+              <ThemedText numberOfLines={1} style={styles.appendTitle}>
+                {doc.title}
+              </ThemedText>
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                {doc.pageCount} page{doc.pageCount === 1 ? '' : 's'}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </ThemedView>
+      )}
     </ThemedView>
   );
 }
@@ -103,5 +172,25 @@ const styles = StyleSheet.create({
   },
   scanButtonText: {
     color: '#FFFFFF',
+  },
+  appendSheet: {
+    position: 'absolute',
+    left: Spacing.two,
+    right: Spacing.two,
+    bottom: BottomTabInset + Spacing.two,
+    borderRadius: Spacing.three,
+    paddingVertical: Spacing.one,
+    maxHeight: 260,
+  },
+  appendRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+  },
+  appendTitle: {
+    flexShrink: 1,
   },
 });

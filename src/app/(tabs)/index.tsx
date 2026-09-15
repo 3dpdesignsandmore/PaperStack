@@ -7,12 +7,13 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { ThemedText } from '@/components/themed-text';
@@ -28,6 +29,7 @@ const NUM_COLUMNS = 2;
 export default function LibraryScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const router = useRouter();
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -90,27 +92,31 @@ export default function LibraryScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
             renderItem={({ item }) => (
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <Image
-                  source={{ uri: item.firstThumbPath ?? undefined }}
-                  style={styles.thumbnail}
-                  contentFit="cover"
-                  recyclingKey={item.id}
-                  transition={150}
-                />
-                <ThemedText
-                  type="smallBold"
-                  style={styles.cardTitle}
-                  numberOfLines={1}>
-                  {item.title}
-                </ThemedText>
-                <ThemedText
-                  type="small"
-                  style={[styles.cardDetail, { color: theme.textSecondary }]}>
-                  {formatDate(item.createdAt)} · {item.pageCount} page
-                  {item.pageCount === 1 ? '' : 's'}
-                </ThemedText>
-              </ThemedView>
+              <Pressable
+                style={styles.card}
+                onPress={() => router.push(`/document/${item.id}`)}>
+                <ThemedView type="backgroundElement" style={styles.cardInner}>
+                  <Image
+                    source={{ uri: item.firstThumbPath ?? undefined }}
+                    style={styles.thumbnail}
+                    contentFit="cover"
+                    recyclingKey={item.id}
+                    transition={150}
+                  />
+                  <ThemedText
+                    type="smallBold"
+                    style={styles.cardTitle}
+                    numberOfLines={1}>
+                    {item.title}
+                  </ThemedText>
+                  <ThemedText
+                    type="small"
+                    style={[styles.cardDetail, { color: theme.textSecondary }]}>
+                    {formatDate(item.createdAt)} · {item.pageCount} page
+                    {item.pageCount === 1 ? '' : 's'}
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
             )}
           />
         )}
@@ -171,6 +177,9 @@ const styles = StyleSheet.create({
   card: {
     flex: 1 / NUM_COLUMNS,
     margin: Spacing.one,
+    borderRadius: Spacing.two,
+  },
+  cardInner: {
     borderRadius: Spacing.two,
     overflow: 'hidden',
     gap: Spacing.one,

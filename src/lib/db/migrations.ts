@@ -20,6 +20,10 @@ export const DATABASE_NAME = 'paperstack.db';
  * every launch. Invoked from `SQLiteProvider`'s `onInit`.
  */
 export async function migrate(db: SQLiteDatabase): Promise<void> {
+  // `ON DELETE CASCADE` only fires with foreign keys enabled, and the
+  // pragma is per-connection — so set it on every init, not just v0→v1.
+  await db.execAsync('PRAGMA foreign_keys = ON');
+
   const result = await db.getFirstAsync<{ user_version: number }>(
     'PRAGMA user_version',
   );

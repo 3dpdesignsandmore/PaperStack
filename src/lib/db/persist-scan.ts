@@ -150,3 +150,64 @@ export async function persistScanSession(
     throw e;
   }
 }
+
+/**
+ * Append a completed scanner session's pages to an existing document.
+ * New pages continue the document's page numbering.
+ */
+export async function appendScanSession(
+  db: SQLiteDatabase,
+  pageUris: string[],
+  documentId: string,
+): Promise<void> {
+  const existing = await db.getFirstAsync<{ maxIndex: number }>(
+    'SELECT MAX(page_index) AS maxIndex FROM scan_pages WHERE document_id = ?',
+    [documentId],
+  );
+  const nextIndex = (existing?.maxIndex ?? -1) + 1;
+
+  const docDir = new Directory(scanRootDir(), documentId);
+  docDir.create({ intermediates: true, idempotent: true });
+
+  const written: string[] = [];
+  try {
+    for (let offset = 0; offset < pageUris.length; offset++) {
+      const index = nextIndex + offset;
+      const prepared = await preparePage(pageUris[offset]);
+      const dest = new File(docDir, `page-${index}.jpg`);
+      new File(prepared.uri).move(dest);
+      written.push(dest.uri);
+      await db.runAsync(
+        `INSERT INTO scan_pages (id, document_id, page_index, image_path, thumb_path, width_px, height_px)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          generateId(),
+          documentId,
+          index,
+          dest.uri,
+          dest.uri,
+          prepared.widthPx,
+          prepared.heightPx,
+        ],
+      );
+    }
+
+    await db.runAsync(
+      'UPDATE scan_documents SET updated_at = ? WHERE id = ?',
+      [Date.now(), documentId],
+    );
+  } catch (e: unknown) {
+    // Roll back rows and files this append created, so a failed append
+    // leaves the document exactly as it was.
+    for (const uri of written) {
+      const file = new File(uri);
+      if (file.exists) {
+        file.delete();
+      }
+    }
+    for (const uri of written) {
+      await db.runAsync('DELETE FROM scan_pages WHERE image_path = ?', [uri]);
+    }
+    throw e;
+  }
+}

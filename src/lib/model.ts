@@ -8,6 +8,13 @@ export const DocumentKind = {
 } as const;
 export type DocumentKind = (typeof DocumentKind)[keyof typeof DocumentKind];
 
+/** Narrow a raw DB `kind` string; unknown values fall back to document. */
+export function toDocumentKind(value: string): DocumentKind {
+  return value === DocumentKind.Receipt
+    ? DocumentKind.Receipt
+    : DocumentKind.Document;
+}
+
 /** A `scan_documents` row. */
 export interface ScanDocument {
   id: string;

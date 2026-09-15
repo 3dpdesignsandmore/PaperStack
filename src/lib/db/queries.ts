@@ -3,11 +3,7 @@
  */
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { DocumentKind, LibraryEntry, ScanPage } from '@/lib/model';
-
-function toKind(value: string): DocumentKind {
-  return value === 'receipt' ? 'receipt' : 'document';
-}
+import { toDocumentKind, type LibraryEntry, type ScanDocument, type ScanPage } from '@/lib/model';
 
 /**
  * All documents, newest first, with page counts and the first page's
@@ -34,12 +30,49 @@ export async function fetchLibrary(db: SQLiteDatabase): Promise<LibraryEntry[]> 
   return rows.map((row) => ({
     id: row.id,
     title: row.title,
-    kind: toKind(row.kind),
+    kind: toDocumentKind(row.kind),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     pageCount: row.pageCount,
     firstThumbPath: row.firstThumbPath,
   }));
+}
+
+/** Fetch one document by id, or null when it does not exist. */
+export async function fetchDocument(
+  db: SQLiteDatabase,
+  documentId: string,
+): Promise<ScanDocument | null> {
+  const row = await db.getFirstAsync<{
+    id: string;
+    title: string;
+    kind: string;
+    created_at: number;
+    updated_at: number;
+  }>('SELECT * FROM scan_documents WHERE id = ?', [documentId]);
+
+  if (row == null) {
+    return null;
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    kind: toDocumentKind(row.kind),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** Rename a document. */
+export async function renameDocument(
+  db: SQLiteDatabase,
+  documentId: string,
+  title: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE scan_documents SET title = ?, updated_at = ? WHERE id = ?',
+    [title, Date.now(), documentId],
+  );
 }
 
 /** Ordered pages of one document. */
