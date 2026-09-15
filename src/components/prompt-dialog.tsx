@@ -15,7 +15,7 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Props for {@link PromptDialog}. */
@@ -59,16 +59,25 @@ export function PromptDialog({
       onRequestClose={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable
-          style={[styles.card, { backgroundColor: theme.background }]}
+          style={[styles.card, { backgroundColor: theme.background, borderColor: theme.border }]}
           onPress={(e) => e.stopPropagation()}>
           <ThemedText type="subtitle">{title}</ThemedText>
           {message != null && (
-            <ThemedText type="small" style={styles.message}>
+            <ThemedText
+              type="small"
+              style={[styles.message, { color: theme.textSecondary }]}>
               {message}
             </ThemedText>
           )}
           <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
+            style={[
+              styles.input,
+              {
+                color: theme.text,
+                borderColor: theme.border,
+                backgroundColor: theme.backgroundElement,
+              },
+            ]}
             value={value}
             onChangeText={setValue}
             placeholder={placeholder}
@@ -84,16 +93,26 @@ export function PromptDialog({
             }}
           />
           <ThemedView style={styles.actions}>
-            <Pressable style={styles.action} onPress={onCancel}>
+            <Pressable
+              style={[styles.action, styles.actionOutline, { borderColor: theme.border }]}
+              onPress={onCancel}>
               <ThemedText type="defaultSemiBold">Cancel</ThemedText>
             </Pressable>
             <Pressable
-              style={styles.action}
+              style={[
+                styles.action,
+                styles.actionFilled,
+                value.trim().length > 0 && { backgroundColor: theme.accent },
+              ]}
               disabled={value.trim().length === 0}
               onPress={() => onConfirm(value.trim())}>
               <ThemedText
                 type="defaultSemiBold"
-                style={value.trim().length === 0 ? styles.actionDisabled : styles.actionConfirm}>
+                style={
+                  value.trim().length === 0
+                    ? styles.actionDisabled
+                    : { color: theme.accentText }
+                }>
                 {confirmLabel}
               </ThemedText>
             </Pressable>
@@ -113,7 +132,8 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
   },
   card: {
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
+    borderWidth: 1,
     padding: Spacing.four,
     width: '100%',
     maxWidth: 420,
@@ -124,7 +144,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
     paddingHorizontal: Spacing.three,
     paddingVertical: Platform.OS === 'ios' ? Spacing.two : 0,
     fontSize: 16,
@@ -132,15 +152,17 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
   action: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Radius.pill,
   },
-  actionConfirm: {
-    color: '#208AEF',
+  actionOutline: {
+    borderWidth: 1,
   },
+  actionFilled: {},
   actionDisabled: {
     opacity: 0.4,
   },

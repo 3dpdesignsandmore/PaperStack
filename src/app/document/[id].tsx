@@ -13,7 +13,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, scanRootDir } from '@/lib/db/persist-scan';
 import { fetchDocument, fetchPages, renameDocument } from '@/lib/db/queries';
@@ -172,7 +172,9 @@ export default function DocumentDetailScreen() {
         keyExtractor={(page) => page.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => (
-          <ThemedView type="backgroundElement" style={styles.pageCard}>
+          <ThemedView
+            type="backgroundElement"
+            style={[styles.pageCard, { borderColor: theme.border }]}>
             <Image
               source={{ uri: item.imagePath }}
               style={styles.pageImage}
@@ -188,19 +190,31 @@ export default function DocumentDetailScreen() {
       />
 
       <SafeAreaView style={styles.actions} edges={['bottom']}>
-        <Pressable style={styles.actionButton} onPress={onExport} disabled={exporting}>
-          <ThemedText type="defaultSemiBold">
+        <Pressable
+          style={[styles.actionButton, { borderColor: theme.accent }]}
+          onPress={onExport}
+          disabled={exporting}>
+          <ThemedText type="defaultSemiBold" style={{ color: theme.accent }}>
             {exporting ? 'Exporting…' : 'Export PDF'}
           </ThemedText>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={() => setRenaming(true)}>
+        <Pressable
+          style={[styles.actionButton, { borderColor: theme.border }]}
+          onPress={() => setRenaming(true)}>
           <ThemedText type="defaultSemiBold">Rename</ThemedText>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={onAddPages} disabled={adding}>
-          <ThemedText type="defaultSemiBold">{adding ? 'Opening scanner…' : 'Add pages'}</ThemedText>
+        <Pressable
+          style={[styles.actionButton, { borderColor: theme.border }]}
+          onPress={onAddPages}
+          disabled={adding}>
+          <ThemedText type="defaultSemiBold">
+            {adding ? 'Opening scanner…' : 'Add pages'}
+          </ThemedText>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={onDelete}>
-          <ThemedText type="defaultSemiBold" style={{ color: '#D32F2F' }}>
+        <Pressable
+          style={[styles.actionButton, { borderColor: theme.danger }]}
+          onPress={onDelete}>
+          <ThemedText type="defaultSemiBold" style={{ color: theme.danger }}>
             Delete
           </ThemedText>
         </Pressable>
@@ -237,7 +251,8 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   pageCard: {
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
     padding: Spacing.two,
     gap: Spacing.one,
     alignItems: 'center',
@@ -245,17 +260,20 @@ const styles = StyleSheet.create({
   pageImage: {
     width: '100%',
     aspectRatio: 3 / 4,
-    borderRadius: Spacing.one,
+    borderRadius: Radius.small,
     backgroundColor: '#80808040',
   },
   actions: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
     gap: Spacing.two,
     flexWrap: 'wrap',
+    paddingHorizontal: Spacing.three,
   },
   actionButton: {
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
   },
 });

@@ -23,7 +23,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchDocument, fetchPages } from '@/lib/db/queries';
 import { LETTER } from '@/lib/layout/pack-columns';
@@ -142,6 +142,11 @@ export default function ComposeScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content}>
+          <ThemedView style={styles.headerLabel}>
+            <ThemedText type="label" style={{ color: theme.accent }}>
+              Compose
+            </ThemedText>
+          </ThemedView>
           <ThemedText type="subtitle">{doc.title}</ThemedText>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
             Combining {pages.length} page{pages.length === 1 ? '' : 's'} into
@@ -194,7 +199,9 @@ export default function ComposeScreen() {
               : ''}
           </ThemedText>
 
-          <ThemedView type="backgroundElement" style={styles.controlCard}>
+          <ThemedView
+            type="backgroundElement"
+            style={[styles.controlCard, { borderColor: theme.border }]}>
             <ThemedText type="defaultSemiBold">Columns: {columns}</ThemedText>
             <View style={styles.stepperRow}>
               {[2, 3, 4, 6].map((c) => (
@@ -202,33 +209,44 @@ export default function ComposeScreen() {
                   key={c}
                   style={[
                     styles.columnChip,
-                    c === columns && styles.columnChipActive,
+                    { borderColor: theme.border },
+                    c === columns && { borderColor: theme.accent, backgroundColor: theme.accent },
                   ]}
                   onPress={() => setColumns(c)}>
                   <ThemedText
                     type="defaultSemiBold"
-                    style={c === columns ? styles.columnChipActiveText : undefined}>
+                    style={
+                      c === columns
+                        ? { color: theme.accentText }
+                        : { color: theme.text }
+                    }>
                     {c}
                   </ThemedText>
                 </Pressable>
               ))}
             </View>
 
-            <ThemedView style={styles.switchRow}>
+            <ThemedView type="background" style={styles.switchRow}>
               <ThemedText type="small">Separators</ThemedText>
               <Switch value={separators} onValueChange={setSeparators} />
             </ThemedView>
-            <ThemedView style={styles.switchRow}>
+            <ThemedView type="background" style={styles.switchRow}>
               <ThemedText type="small">Captions</ThemedText>
               <Switch value={captions} onValueChange={setCaptions} />
             </ThemedView>
           </ThemedView>
 
           <Pressable
-            style={[styles.exportButton, exporting && styles.disabled]}
+            style={[
+              styles.exportButton,
+              { backgroundColor: theme.accent },
+              exporting && styles.disabled,
+            ]}
             onPress={onExport}
             disabled={exporting}>
-            <ThemedText type="defaultSemiBold" style={styles.exportText}>
+            <ThemedText
+              type="defaultSemiBold"
+              style={{ color: theme.accentText }}>
               {exporting ? 'Exporting…' : 'Export packed PDF'}
             </ThemedText>
           </Pressable>
@@ -255,6 +273,9 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.three,
   },
+  headerLabel: {
+    marginBottom: -Spacing.two,
+  },
   previewRow: {
     flexDirection: 'row',
     gap: Spacing.two,
@@ -268,7 +289,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   controlCard: {
-    borderRadius: Spacing.three,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
     padding: Spacing.three,
     gap: Spacing.three,
   },
@@ -279,15 +301,8 @@ const styles = StyleSheet.create({
   columnChip: {
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: '#208AEF',
-  },
-  columnChipActive: {
-    backgroundColor: '#208AEF',
-  },
-  columnChipActiveText: {
-    color: '#FFFFFF',
   },
   switchRow: {
     flexDirection: 'row',
@@ -295,13 +310,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   exportButton: {
-    borderRadius: 999,
-    paddingVertical: Spacing.two,
+    borderRadius: Radius.pill,
+    paddingVertical: Spacing.three,
     alignItems: 'center',
-    backgroundColor: '#208AEF',
-  },
-  exportText: {
-    color: '#FFFFFF',
   },
   disabled: {
     opacity: 0.5,

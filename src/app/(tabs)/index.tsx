@@ -18,7 +18,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLibrary } from '@/lib/db/queries';
 import type { LibraryEntry } from '@/lib/model';/** Columns in the library grid. */
@@ -70,26 +70,35 @@ export default function LibraryScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.header}>
-          <ThemedText type="title" style={styles.title}>
-            Library
-          </ThemedText>
-          {entries != null && (
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              {entries.length} document{entries.length === 1 ? '' : 's'}
+          <ThemedView style={styles.headerLabel}>
+            <ThemedText type="label" style={{ color: theme.accent }}>
+              Your scans
             </ThemedText>
-          )}
-          {entries != null && entries.length > 0 && (
-            <Pressable
-              style={styles.selectToggle}
-              onPress={() => {
-                setSelecting((s) => !s);
-                setSelected(new Set());
-              }}>
-              <ThemedText type="defaultSemiBold" style={styles.selectToggleText}>
-                {selecting ? 'Done' : 'Select'}
+          </ThemedView>
+          <ThemedView style={styles.headerText}>
+            <ThemedText type="title" style={styles.title}>
+              Library
+            </ThemedText>
+            {entries != null && (
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                {entries.length} document{entries.length === 1 ? '' : 's'}
               </ThemedText>
-            </Pressable>
-          )}
+            )}
+            {entries != null && entries.length > 0 && (
+              <Pressable
+                style={styles.selectToggle}
+                onPress={() => {
+                  setSelecting((s) => !s);
+                  setSelected(new Set());
+                }}>
+                <ThemedText
+                  type="defaultSemiBold"
+                  style={{ color: theme.accent }}>
+                  {selecting ? 'Done' : 'Select'}
+                </ThemedText>
+              </Pressable>
+            )}
+          </ThemedView>
         </ThemedView>
 
         {entries == null ? (
@@ -129,9 +138,10 @@ export default function LibraryScreen() {
                   type="backgroundElement"
                   style={[
                     styles.cardInner,
+                    { borderColor: theme.border },
                     selecting &&
                       selected.has(item.id) && {
-                        borderColor: '#208AEF',
+                        borderColor: theme.accent,
                         borderWidth: 2,
                       },
                   ]}>
@@ -143,24 +153,35 @@ export default function LibraryScreen() {
                     transition={150}
                   />
                   {selecting && selected.has(item.id) && (
-                    <ThemedView style={styles.checkBadge}>
-                      <ThemedText type="smallBold" style={styles.checkText}>
+                    <ThemedView
+                      style={[
+                        styles.checkBadge,
+                        {
+                          backgroundColor: theme.accent,
+                          borderColor: theme.background,
+                        },
+                      ]}>
+                      <ThemedText
+                        type="smallBold"
+                        style={[styles.checkText, { color: theme.accentText }]}>
                         {'✓'}
                       </ThemedText>
                     </ThemedView>
                   )}
-                  <ThemedText
-                    type="smallBold"
-                    style={styles.cardTitle}
-                    numberOfLines={1}>
-                    {item.title}
-                  </ThemedText>
-                  <ThemedText
-                    type="small"
-                    style={[styles.cardDetail, { color: theme.textSecondary }]}>
-                    {formatDate(item.createdAt)} · {item.pageCount} page
-                    {item.pageCount === 1 ? '' : 's'}
-                  </ThemedText>
+                  <ThemedView style={styles.cardBody}>
+                    <ThemedText
+                      type="smallBold"
+                      style={styles.cardTitle}
+                      numberOfLines={1}>
+                      {item.title}
+                    </ThemedText>
+                    <ThemedText
+                      type="small"
+                      style={[styles.cardDetail, { color: theme.textSecondary }]}>
+                      {formatDate(item.createdAt)} · {item.pageCount} page
+                      {item.pageCount === 1 ? '' : 's'}
+                    </ThemedText>
+                  </ThemedView>
                 </ThemedView>
               </Pressable>
             )}
@@ -168,14 +189,16 @@ export default function LibraryScreen() {
         )}
         {selecting && selected.size > 0 && (
           <Pressable
-            style={styles.composeBar}
+            style={[styles.composeBar, { backgroundColor: theme.accent }]}
             onPress={() =>
               router.push({
                 pathname: '/compose',
                 params: { ids: Array.from(selected).join(',') },
               })
             }>
-            <ThemedText type="defaultSemiBold" style={styles.composeBarText}>
+            <ThemedText
+              type="defaultSemiBold"
+              style={{ color: theme.accentText }}>
               Compose {selected.size} into packed PDF
             </ThemedText>
           </Pressable>
@@ -204,17 +227,22 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
   },
   header: {
+    gap: Spacing.two,
+  },
+  headerText: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
-    paddingBottom: Spacing.three,
     gap: Spacing.two,
   },
   title: {
-    fontSize: 32,
-    lineHeight: 36,
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '800',
+  },
+  headerLabel: {
+    paddingHorizontal: Spacing.four,
   },
   center: {
     flex: 1,
@@ -223,11 +251,13 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: Spacing.four,
     marginBottom: BottomTabInset + Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    gap: Spacing.two,
     padding: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.two,
   },
   emptyHint: {
     textAlign: 'center',
@@ -240,48 +270,49 @@ const styles = StyleSheet.create({
   card: {
     flex: 1 / NUM_COLUMNS,
     margin: Spacing.one,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
   },
   cardInner: {
-    borderRadius: Spacing.two,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
     overflow: 'hidden',
-    gap: Spacing.one,
   },
   thumbnail: {
     width: '100%',
     aspectRatio: 3 / 4,
-    borderRadius: Spacing.two,
     backgroundColor: '#80808040',
   },
+  cardBody: {
+    gap: Spacing.half,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
   cardTitle: {
-    paddingHorizontal: Spacing.one,
+    fontSize: 15,
+    lineHeight: 20,
   },
   cardDetail: {
-    paddingHorizontal: Spacing.one,
+    fontSize: 12,
+    lineHeight: 16,
   },
   selectToggle: {
     paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
-    borderRadius: 999,
-    borderColor: '#208AEF',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.pill,
     borderWidth: 1,
-  },
-  selectToggleText: {
-    color: '#208AEF',
   },
   checkBadge: {
     position: 'absolute',
-    top: Spacing.one,
-    right: Spacing.one,
+    top: Spacing.two,
+    right: Spacing.two,
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#208AEF',
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkText: {
-    color: '#FFFFFF',
     fontSize: 14,
     lineHeight: 18,
     fontWeight: '700',
@@ -291,12 +322,8 @@ const styles = StyleSheet.create({
     left: Spacing.three,
     right: Spacing.three,
     bottom: BottomTabInset + Spacing.two,
-    borderRadius: 999,
-    paddingVertical: Spacing.two,
+    borderRadius: Radius.pill,
+    paddingVertical: Spacing.three,
     alignItems: 'center',
-    backgroundColor: '#208AEF',
-  },
-  composeBarText: {
-    color: '#FFFFFF',
   },
 });

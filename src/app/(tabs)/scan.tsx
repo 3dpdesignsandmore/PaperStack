@@ -12,7 +12,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistScanSession } from '@/lib/db/persist-scan';
 import { fetchLibrary } from '@/lib/db/queries';
@@ -79,18 +79,30 @@ export default function ScanScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView type="backgroundElement" style={styles.card}>
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.card, { borderColor: theme.border }]}>
+          <ThemedView style={styles.labelWrap}>
+            <ThemedText type="label" style={{ color: theme.accent }}>
+              Capture
+            </ThemedText>
+          </ThemedView>
           <ThemedText type="title" style={styles.emoji}>📷</ThemedText>
           <ThemedText type="subtitle">Scan a document</ThemedText>
           <ThemedText type="small" style={styles.hint}>
             Edge detection and perspective correction are handled by your
             platform&apos;s native scanner. Capture one or many pages.
           </ThemedText>
-          <Pressable onPress={startScan} disabled={scanning} style={styles.scanButton}>
+          <Pressable
+            onPress={startScan}
+            disabled={scanning}
+            style={[styles.scanButton, { backgroundColor: theme.accent }]}>
             {scanning ? (
-              <ActivityIndicator />
+              <ActivityIndicator color={theme.accentText} />
             ) : (
-              <ThemedText type="defaultSemiBold" style={styles.scanButtonText}>
+              <ThemedText
+                type="defaultSemiBold"
+                style={{ color: theme.accentText }}>
                 Open scanner
               </ThemedText>
             )}
@@ -117,7 +129,9 @@ export default function ScanScreen() {
 
       {/* Append picker — shown while the save dialog is open. */}
       {pendingUris != null && recentDocs.length > 0 && (
-        <ThemedView type="backgroundElement" style={styles.appendSheet}>
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.appendSheet, { borderColor: theme.border }]}>
           {recentDocs.slice(0, 10).map((doc) => (
             <Pressable key={doc.id} onPress={() => saveAppend(doc)} style={styles.appendRow}>
               <ThemedText numberOfLines={1} style={styles.appendTitle}>
@@ -148,11 +162,15 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: Spacing.four,
     marginBottom: BottomTabInset + Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
+    borderWidth: 1,
     padding: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
+  },
+  labelWrap: {
+    alignSelf: 'flex-start',
   },
   emoji: {
     fontSize: 48,
@@ -165,20 +183,17 @@ const styles = StyleSheet.create({
   },
   scanButton: {
     marginTop: Spacing.three,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.five,
-    backgroundColor: '#208AEF',
-  },
-  scanButtonText: {
-    color: '#FFFFFF',
   },
   appendSheet: {
     position: 'absolute',
     left: Spacing.two,
     right: Spacing.two,
     bottom: BottomTabInset + Spacing.two,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.large,
+    borderWidth: 1,
     paddingVertical: Spacing.one,
     maxHeight: 260,
   },
