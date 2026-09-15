@@ -412,7 +412,7 @@ Single-page PDF export moved *before* the N-up engine. The polyfill and image-em
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| `pdf-lib` invisible text layer doesn't work as expected in RN | **High** — kills searchable PDFs | Spike in Phase 0, before anything depends on it. Fallback: small native module for the text layer, or image-only PDFs in v1. |
+| `pdf-lib` invisible text layer doesn't work as expected in RN | ~~**High** — kills searchable PDFs~~ **Retired** — verified working (§13.1) | N/A |
 | `pdf-lib` too slow / memory-heavy for 40+ image jobs | Medium | Downscale before embed; show progress; cap batch size |
 | OCR accuracy on thermal receipts | Medium | Every field editable; never auto-submit extracted data anywhere |
 | **Redaction that doesn't redact** | **High** — user-trust failure, potential data leak | Flatten into the bitmap and strip intersecting OCR blocks before embed (§7). Don't ship the feature until it's verified on an exported file. |
@@ -438,5 +438,5 @@ Single-page PDF export moved *before* the N-up engine. The polyfill and image-em
 3. **Set identity before the first EAS build.** `app.json` has no `ios.bundleIdentifier` or `android.package`, and both are permanent once published. Pick them now (e.g. `com.3dpdesignsandmore.paperstack`). Add `NSCameraUsageDescription` and `NSPhotoLibraryAddUsageDescription` at the same time — a missing usage string is an automatic App Store rejection, and it is cheaper to write once than to discover at submission.
 4. Strip web and the starter template (§2) — one clean commit before real code lands.
 5. Set up `expo-dev-client` and get an EAS development build onto your phone.
-6. Spike `react-native-document-scanner-plugin` — confirm it builds under SDK 57 and the native UI is acceptable on both platforms.
+6. ~~Spike `react-native-document-scanner-plugin`~~ — **done, PASSED** (2026-09-14). Built under SDK 57 in the EAS dev build (commit `a4d35a7`), camera permission granted, ML Kit scanner UI launched, multi-page capture returned `scannedImages` file paths to JS. The plan's third-party-native risk is retired.
 7. Extend `CLAUDE.md` with the §1 decisions and the §4 dependency list, so Claude Code sessions start with this context.
