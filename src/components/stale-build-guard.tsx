@@ -24,7 +24,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 
 /** Native-dependent modules the current JS expects the binary to contain. */
-const PROBES: Array<[label: string, load: () => Promise<unknown>]> = [
+const PROBES: [label: string, load: () => Promise<unknown>][] = [
   ['DocumentScanner', () => import('react-native-document-scanner-plugin')],
   ['ExpoSharing', () => import('expo-sharing')],
 ];
