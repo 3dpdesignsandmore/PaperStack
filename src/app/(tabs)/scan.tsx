@@ -1,34 +1,37 @@
 /**
  * Scan tab (plan §8): launches the native document scanner — Apple
- * VisionKit on iOS, ML Kit Document Scanner on Android — via
- * react-native-document-scanner-plugin.
- *
- * Phase 0 state: camera-permission gate + scanner invocation + alert-based
- * result. Phase 1 replaces the alert with: copy scans into the documents
- * directory, SQLite rows, and a library refresh.
+ * VisionKit on iOS, ML Kit Document Scanner on Android — and persists the
+ * captured pages through the pipeline in `@/lib/db/persist-scan`:
+ * long-edge downscale → JPEG compress → documents/scans/ → SQLite rows.
  */
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSQLiteContext } from 'expo-sqlite';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { DocumentKind } from '@/lib/model';
+import { persistScanSession } from '@/lib/db/persist-scan';
 import { scanPages } from '@/lib/scanner';
 
 export default function ScanScreen() {
   const [scanning, setScanning] = useState(false);
+  const db = useSQLiteContext();
 
   async function startScan() {
     setScanning(true);
     try {
       const { pageUris } = await scanPages();
-      if (pageUris.length > 0) {
-        Alert.alert(
-          'Scan complete',
-          `${pageUris.length} page(s) captured. Saving to library arrives in Phase 1.`,
-        );
+      if (pageUris.length === 0) {
+        return; // user cancelled
       }
+      await persistScanSession(db, pageUris, 'Untitled scan', DocumentKind.Document);
+      Alert.alert(
+        'Scan complete',
+        `${pageUris.length} page(s) captured and saved to Library.`,
+      );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       Alert.alert('Scan failed', message);
