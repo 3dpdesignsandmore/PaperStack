@@ -10,6 +10,7 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 
+import { AppButton } from '@/components/app-button';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -190,34 +191,15 @@ export default function DocumentDetailScreen() {
       />
 
       <SafeAreaView style={styles.actions} edges={['bottom']}>
-        <Pressable
-          style={[styles.actionButton, { borderColor: theme.accent }]}
-          onPress={onExport}
-          disabled={exporting}>
-          <ThemedText type="defaultSemiBold" style={{ color: theme.accent }}>
-            {exporting ? 'Exporting…' : 'Export PDF'}
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          style={[styles.actionButton, { borderColor: theme.border }]}
-          onPress={() => setRenaming(true)}>
-          <ThemedText type="defaultSemiBold">Rename</ThemedText>
-        </Pressable>
-        <Pressable
-          style={[styles.actionButton, { borderColor: theme.border }]}
+        <AppButton label={exporting ? 'Exporting…' : 'Export PDF'} onPress={onExport} disabled={exporting} />
+        <AppButton label="Rename" variant="outline" onPress={() => setRenaming(true)} />
+        <AppButton
+          label={adding ? 'Opening scanner…' : 'Add pages'}
+          variant="outline"
           onPress={onAddPages}
-          disabled={adding}>
-          <ThemedText type="defaultSemiBold">
-            {adding ? 'Opening scanner…' : 'Add pages'}
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          style={[styles.actionButton, { borderColor: theme.danger }]}
-          onPress={onDelete}>
-          <ThemedText type="defaultSemiBold" style={{ color: theme.danger }}>
-            Delete
-          </ThemedText>
-        </Pressable>
+          disabled={adding}
+        />
+        <AppButton label="Delete" variant="danger" onPress={onDelete} />
       </SafeAreaView>
 
       <PromptDialog
@@ -269,11 +251,5 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     flexWrap: 'wrap',
     paddingHorizontal: Spacing.three,
-  },
-  actionButton: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
   },
 });

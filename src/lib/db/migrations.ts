@@ -10,7 +10,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 /** Current schema version. Increment when adding a migration step. */
-export const DATABASE_VERSION = 1;
+export const DATABASE_VERSION = 2;
 
 /** Database file name, opened relative to the default SQLite directory. */
 export const DATABASE_NAME = 'paperstack.db';
@@ -60,7 +60,18 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
     current = 1;
   }
 
-  // Future migrations: `if (current === 1) { ... current = 2; }`
+  if (current === 1) {
+    // v2: key-value settings store (scan-name prefix and future defaults).
+    await db.execAsync(`
+      CREATE TABLE app_settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );
+    `);
+    current = 2;
+  }
+
+  // Future migrations: `if (current === 2) { ... current = 3; }`
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

@@ -16,6 +16,7 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 
+import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
@@ -85,18 +86,14 @@ export default function LibraryScreen() {
               </ThemedText>
             )}
             {entries != null && entries.length > 0 && (
-              <Pressable
-                style={styles.selectToggle}
+              <AppButton
+                label={selecting ? 'Done' : 'Select'}
+                variant="outline"
                 onPress={() => {
                   setSelecting((s) => !s);
                   setSelected(new Set());
-                }}>
-                <ThemedText
-                  type="defaultSemiBold"
-                  style={{ color: theme.accent }}>
-                  {selecting ? 'Done' : 'Select'}
-                </ThemedText>
-              </Pressable>
+                }}
+              />
             )}
           </ThemedView>
         </ThemedView>
@@ -188,20 +185,16 @@ export default function LibraryScreen() {
           />
         )}
         {selecting && selected.size > 0 && (
-          <Pressable
-            style={[styles.composeBar, { backgroundColor: theme.accent }]}
+          <AppButton
+            label={`Compose ${selected.size} into packed PDF`}
             onPress={() =>
               router.push({
                 pathname: '/compose',
                 params: { ids: Array.from(selected).join(',') },
               })
-            }>
-            <ThemedText
-              type="defaultSemiBold"
-              style={{ color: theme.accentText }}>
-              Compose {selected.size} into packed PDF
-            </ThemedText>
-          </Pressable>
+            }
+            style={styles.composeBar}
+          />
         )}
       </SafeAreaView>
     </ThemedView>
@@ -295,12 +288,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
-  selectToggle: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-  },
   checkBadge: {
     position: 'absolute',
     top: Spacing.two,
@@ -322,8 +309,5 @@ const styles = StyleSheet.create({
     left: Spacing.three,
     right: Spacing.three,
     bottom: BottomTabInset + Spacing.two,
-    borderRadius: Radius.pill,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
   },
 });

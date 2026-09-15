@@ -5,17 +5,22 @@
  * long-edge downscale → JPEG compress → documents/scans/ → SQLite rows.
  */
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet } from 'react-native';
+import { Alert, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
+import { AppButton } from '@/components/app-button';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistScanSession } from '@/lib/db/persist-scan';
-import { fetchLibrary } from '@/lib/db/queries';
+import {
+  fetchLibrary,
+  getSetting,
+  SCAN_NAME_PREFIX_KEY,
+} from '@/lib/db/queries';
 import { DocumentKind, type LibraryEntry } from '@/lib/model';
 import { scanPages } from '@/lib/scanner';
 
@@ -27,6 +32,8 @@ export default function ScanScreen() {
   // Pending session awaiting a save decision (name + new-vs-append).
   const [pendingUris, setPendingUris] = useState<string[] | null>(null);
   const [recentDocs, setRecentDocs] = useState<LibraryEntry[]>([]);
+  // Name the save dialog starts with (the configured prefix).
+  const [saveName, setSaveName] = useState('');
 
   async function startScan() {
     setScanning(true);
@@ -36,7 +43,9 @@ export default function ScanScreen() {
         return; // user cancelled
       }
       // Capture the session, then ask how to file it before persisting.
+      // The save dialog's name field starts from the configured prefix.
       setRecentDocs(await fetchLibrary(db));
+      setSaveName(await getSetting(db, SCAN_NAME_PREFIX_KEY).then((v) => v ?? ''));
       setPendingUris(pageUris);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -93,20 +102,13 @@ export default function ScanScreen() {
             Edge detection and perspective correction are handled by your
             platform&apos;s native scanner. Capture one or many pages.
           </ThemedText>
-          <Pressable
+          <AppButton
+            label="Open scanner"
             onPress={startScan}
+            loading={scanning}
             disabled={scanning}
-            style={[styles.scanButton, { backgroundColor: theme.accent }]}>
-            {scanning ? (
-              <ActivityIndicator color={theme.accentText} />
-            ) : (
-              <ThemedText
-                type="defaultSemiBold"
-                style={{ color: theme.accentText }}>
-                Open scanner
-              </ThemedText>
-            )}
-          </Pressable>
+            style={styles.scanButton}
+          />
         </ThemedView>
       </SafeAreaView>
 
@@ -122,7 +124,7 @@ export default function ScanScreen() {
         }
         placeholder="e.g. Groceries Sept 14"
         confirmLabel="Save as new"
-        initialValue=""
+        initialValue={saveName}
         onConfirm={saveAsNew}
         onCancel={() => setPendingUris(null)}
       />
@@ -183,9 +185,6 @@ const styles = StyleSheet.create({
   },
   scanButton: {
     marginTop: Spacing.three,
-    borderRadius: Radius.pill,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.five,
   },
   appendSheet: {
     position: 'absolute',

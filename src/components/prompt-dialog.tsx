@@ -4,7 +4,7 @@
  * `Alert.prompt` exists only on iOS, so PaperStack needs its own modal
  * for "name this scan" (and future one-field prompts like rename).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -13,6 +13,7 @@ import {
   TextInput,
 } from 'react-native';
 
+import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
@@ -50,6 +51,14 @@ export function PromptDialog({
 }: PromptDialogProps) {
   const theme = useTheme();
   const [value, setValue] = useState(initialValue);
+
+  // The dialog stays mounted; pick up a new initialValue each time it
+  // opens (e.g. the prefix loaded from settings just before showing).
+  useEffect(() => {
+    if (visible) {
+      setValue(initialValue);
+    }
+  }, [visible, initialValue]);
 
   return (
     <Modal
@@ -93,29 +102,13 @@ export function PromptDialog({
             }}
           />
           <ThemedView style={styles.actions}>
-            <Pressable
-              style={[styles.action, styles.actionOutline, { borderColor: theme.border }]}
-              onPress={onCancel}>
-              <ThemedText type="defaultSemiBold">Cancel</ThemedText>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.action,
-                styles.actionFilled,
-                value.trim().length > 0 && { backgroundColor: theme.accent },
-              ]}
+            <AppButton label="Cancel" variant="outline" onPress={onCancel} />
+            <AppButton
+              label={confirmLabel}
+              variant="filled"
+              onPress={() => onConfirm(value.trim())}
               disabled={value.trim().length === 0}
-              onPress={() => onConfirm(value.trim())}>
-              <ThemedText
-                type="defaultSemiBold"
-                style={
-                  value.trim().length === 0
-                    ? styles.actionDisabled
-                    : { color: theme.accentText }
-                }>
-                {confirmLabel}
-              </ThemedText>
-            </Pressable>
+            />
           </ThemedView>
         </Pressable>
       </Pressable>
@@ -153,17 +146,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: Spacing.two,
-  },
-  action: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    borderRadius: Radius.pill,
-  },
-  actionOutline: {
-    borderWidth: 1,
-  },
-  actionFilled: {},
-  actionDisabled: {
-    opacity: 0.4,
   },
 });

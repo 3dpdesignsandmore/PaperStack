@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 
+import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
@@ -236,20 +237,12 @@ export default function ComposeScreen() {
             </ThemedView>
           </ThemedView>
 
-          <Pressable
-            style={[
-              styles.exportButton,
-              { backgroundColor: theme.accent },
-              exporting && styles.disabled,
-            ]}
+          <AppButton
+            label={exporting ? 'Exporting…' : 'Export packed PDF'}
             onPress={onExport}
-            disabled={exporting}>
-            <ThemedText
-              type="defaultSemiBold"
-              style={{ color: theme.accentText }}>
-              {exporting ? 'Exporting…' : 'Export packed PDF'}
-            </ThemedText>
-          </Pressable>
+            disabled={exporting}
+            style={styles.exportButton}
+          />
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -310,11 +303,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   exportButton: {
-    borderRadius: Radius.pill,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  disabled: {
-    opacity: 0.5,
+    marginTop: Spacing.one,
   },
 });
