@@ -145,7 +145,7 @@ export default function LibraryScreen() {
                   {selecting && selected.has(item.id) && (
                     <ThemedView style={styles.checkBadge}>
                       <ThemedText type="smallBold" style={styles.checkText}>
-                        ✓
+                        {'✓'}
                       </ThemedText>
                     </ThemedView>
                   )}
@@ -281,6 +281,9 @@ const styles = StyleSheet.create({
   },
   checkText: {
     color: '#FFFFFF',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
   },
   composeBar: {
     position: 'absolute',
