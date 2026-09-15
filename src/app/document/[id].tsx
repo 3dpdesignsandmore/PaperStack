@@ -17,6 +17,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, scanRootDir } from '@/lib/db/persist-scan';
 import { fetchDocument, fetchPages, renameDocument } from '@/lib/db/queries';
+import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import { scanPages } from '@/lib/scanner';
 import { Directory } from 'expo-file-system';
@@ -32,6 +33,7 @@ export default function DocumentDetailScreen() {
   const [missing, setMissing] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     const [doc, docPages] = await Promise.all([
@@ -97,6 +99,25 @@ export default function DocumentDetailScreen() {
     }
   }
 
+  async function onExport() {
+    if (document == null || pages == null) {
+      return;
+    }
+    setExporting(true);
+    try {
+      const result = await exportAndShareDocument(document, pages);
+      Alert.alert(
+        'Exported',
+        `${result.pageCount} page(s) · ${Math.round(result.sizeBytes / 1024)} KB PDF.`,
+      );
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Export failed', message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (missing) {
     return (
       <ThemedView style={styles.container}>
@@ -141,6 +162,11 @@ export default function DocumentDetailScreen() {
       />
 
       <SafeAreaView style={styles.actions} edges={['bottom']}>
+        <Pressable style={styles.actionButton} onPress={onExport} disabled={exporting}>
+          <ThemedText type="defaultSemiBold">
+            {exporting ? 'Exporting…' : 'Export PDF'}
+          </ThemedText>
+        </Pressable>
         <Pressable style={styles.actionButton} onPress={() => setRenaming(true)}>
           <ThemedText type="defaultSemiBold">Rename</ThemedText>
         </Pressable>
@@ -200,6 +226,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     gap: Spacing.two,
+    flexWrap: 'wrap',
   },
   actionButton: {
     paddingVertical: Spacing.two,
