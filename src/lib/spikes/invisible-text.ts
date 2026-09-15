@@ -31,19 +31,19 @@
  * §4 polyfill requirement is obsolete for pdf-lib.
  */
 import {
-  beginText,
-  decodePDFRawStream,
-  endText,
-  grayscale,
-  PDFArray,
-  PDFDocument,
-  PDFRawStream,
-  StandardFonts,
-  setFontAndSize,
-  setTextRenderingMode,
-  showText,
-  moveText,
-  TextRenderingMode,
+    beginText,
+    decodePDFRawStream,
+    endText,
+    grayscale,
+    moveText,
+    PDFArray,
+    PDFDocument,
+    PDFRawStream,
+    setFontAndSize,
+    setTextRenderingMode,
+    showText,
+    StandardFonts,
+    TextRenderingMode,
 } from 'pdf-lib';
 
 /** Result shape for the invisible text layer spike. */

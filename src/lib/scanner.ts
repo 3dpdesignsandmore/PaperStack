@@ -6,8 +6,8 @@
  * result validation happens here so screens can trust `pages`.
  */
 import type {
-  ScanDocumentOptions,
-  ScanDocumentResponse,
+    ScanDocumentOptions,
+    ScanDocumentResponse,
 } from 'react-native-document-scanner-plugin';
 
 /** A completed scanner session. */

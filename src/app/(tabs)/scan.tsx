@@ -4,10 +4,10 @@
  * captured pages through the pipeline in `@/lib/db/persist-scan`:
  * long-edge downscale → JPEG compress → documents/scans/ → SQLite rows.
  */
+import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppButton } from '@/components/app-button';
 import { PromptDialog } from '@/components/prompt-dialog';
@@ -17,9 +17,9 @@ import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/th
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistScanSession } from '@/lib/db/persist-scan';
 import {
-  fetchLibrary,
-  getSetting,
-  SCAN_NAME_PREFIX_KEY,
+    fetchLibrary,
+    getSetting,
+    SCAN_NAME_PREFIX_KEY,
 } from '@/lib/db/queries';
 import { DocumentKind, type LibraryEntry } from '@/lib/model';
 import { scanPages } from '@/lib/scanner';

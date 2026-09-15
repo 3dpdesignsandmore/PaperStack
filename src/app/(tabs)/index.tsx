@@ -3,18 +3,18 @@
  * Lives at the `/` route (file must be index.tsx — the launch URL must
  * resolve), labeled "Library" in the tab bar.
  */
-import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useCallback, useState } from 'react';
+import {
+    ActivityIndicator,
+    FlatList,
+    Pressable,
+    RefreshControl,
+    StyleSheet,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
@@ -22,7 +22,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLibrary } from '@/lib/db/queries';
-import type { LibraryEntry } from '@/lib/model';/** Columns in the library grid. */
+import type { LibraryEntry } from '@/lib/model'; /** Columns in the library grid. */
 const NUM_COLUMNS = 2;
 
 export default function LibraryScreen() {

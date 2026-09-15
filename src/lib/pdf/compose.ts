@@ -11,14 +11,14 @@
  */
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 import {
-  LETTER,
-  packColumns,
-  type PackedPage,
-  type PackItem,
-  type PackOptions,
+    LETTER,
+    packColumns,
+    type PackedPage,
+    type PackItem,
+    type PackOptions,
 } from '@/lib/layout/pack-columns';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import { sanitizeTitle } from '@/lib/pdf/export-document';

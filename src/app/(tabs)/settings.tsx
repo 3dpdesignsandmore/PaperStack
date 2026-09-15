@@ -2,11 +2,11 @@
  * Settings screen (plan §8): defaults, recipients, page size, about.
  * Interactive: scan-name prefix used to suggest names in the save dialog.
  */
+import { useFocusEffect } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSQLiteContext } from 'expo-sqlite';
-import { useFocusEffect } from 'expo-router';
 
 import { AppButton } from '@/components/app-button';
 import { PromptDialog } from '@/components/prompt-dialog';
@@ -15,9 +15,9 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  getSetting,
-  SCAN_NAME_PREFIX_KEY,
-  setSetting,
+    getSetting,
+    SCAN_NAME_PREFIX_KEY,
+    setSetting,
 } from '@/lib/db/queries';
 
 /** One static info card on the Settings screen. */

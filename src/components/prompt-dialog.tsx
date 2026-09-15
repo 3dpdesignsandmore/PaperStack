@@ -6,11 +6,11 @@
  */
 import { useEffect, useState } from 'react';
 import {
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
+    Modal,
+    Platform,
+    Pressable,
+    StyleSheet,
+    TextInput,
 } from 'react-native';
 
 import { AppButton } from '@/components/app-button';

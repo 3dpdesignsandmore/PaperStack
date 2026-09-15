@@ -8,18 +8,18 @@
  * the §5 legibility verdict computed live, captions/separators toggles,
  * and Export → packed PDF + share sheet.
  */
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useEffect, useMemo, useState } from 'react';
+import {
+    Alert,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
@@ -28,11 +28,11 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchDocument, fetchPages } from '@/lib/db/queries';
 import { LETTER } from '@/lib/layout/pack-columns';
-import {
-  composeLayout,
-  exportAndShareComposition,
-} from '@/lib/pdf/compose';
 import type { ScanDocument, ScanPage } from '@/lib/model';
+import {
+    composeLayout,
+    exportAndShareComposition,
+} from '@/lib/pdf/compose';
 
 /** Screen width the preview scales into. */
 const PREVIEW_WIDTH = 300;

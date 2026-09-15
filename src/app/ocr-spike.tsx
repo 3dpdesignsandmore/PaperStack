@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing, MaxContentWidth } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import type { InvisibleTextSpikeResult } from '@/lib/spikes/invisible-text';
 import { runInvisibleTextSpike } from '@/lib/spikes/invisible-text';
 import { shareSpikePdf } from '@/lib/spikes/share-pdf';

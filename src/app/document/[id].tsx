@@ -3,12 +3,12 @@
  * pages, with export (as-is or combined N-up), rename, add-pages, and
  * delete. Reached from a Library card via router.push('/document/[id]').
  */
-import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useCallback, useState } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
 import { PromptDialog } from '@/components/prompt-dialog';
@@ -18,8 +18,8 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, scanRootDir } from '@/lib/db/persist-scan';
 import { fetchDocument, fetchPages, renameDocument } from '@/lib/db/queries';
-import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import type { ScanDocument, ScanPage } from '@/lib/model';
+import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import { scanPages } from '@/lib/scanner';
 import { Directory } from 'expo-file-system';
 

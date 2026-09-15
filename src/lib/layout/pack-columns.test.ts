@@ -7,12 +7,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  A4,
-  fitColumns,
-  LETTER,
-  packColumns,
-  type PackItem,
-  type PackOptions,
+    A4,
+    fitColumns,
+    LETTER,
+    packColumns,
+    type PackItem,
+    type PackOptions,
 } from './pack-columns';
 
 /** Fixture page geometry: Letter, 36pt margins, 18pt gutters, 3 columns. */
