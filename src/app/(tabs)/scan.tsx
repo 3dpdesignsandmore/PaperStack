@@ -6,14 +6,21 @@
  */
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet } from 'react-native';
+import {
+    Alert,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
-import { PromptDialog } from '@/components/prompt-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistScanSession } from '@/lib/db/persist-scan';
 import {
@@ -32,7 +39,7 @@ export default function ScanScreen() {
   // Pending session awaiting a save decision (name + new-vs-append).
   const [pendingUris, setPendingUris] = useState<string[] | null>(null);
   const [recentDocs, setRecentDocs] = useState<LibraryEntry[]>([]);
-  // Name the save dialog starts with (the configured prefix).
+  // Name field, seeded from the configured prefix each time the dialog opens.
   const [saveName, setSaveName] = useState('');
 
   async function startScan() {
@@ -43,9 +50,12 @@ export default function ScanScreen() {
         return; // user cancelled
       }
       // Capture the session, then ask how to file it before persisting.
-      // The save dialog's name field starts from the configured prefix.
-      setRecentDocs(await fetchLibrary(db));
-      setSaveName(await getSetting(db, SCAN_NAME_PREFIX_KEY).then((v) => v ?? ''));
+      const [docs, prefix] = await Promise.all([
+        fetchLibrary(db),
+        getSetting(db, SCAN_NAME_PREFIX_KEY),
+      ]);
+      setRecentDocs(docs);
+      setSaveName(prefix ?? '');
       setPendingUris(pageUris);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -55,12 +65,20 @@ export default function ScanScreen() {
     }
   }
 
-  async function saveAsNew(title: string) {
+  function closeDialog() {
+    setPendingUris(null);
+  }
+
+  async function saveAsNew() {
     if (pendingUris == null) {
       return;
     }
+    const title = saveName.trim();
+    if (title.length === 0) {
+      return;
+    }
     const uris = pendingUris;
-    setPendingUris(null);
+    closeDialog();
     try {
       await persistScanSession(db, uris, title, DocumentKind.Document);
       Alert.alert('Saved', `"${title}" is in your Library.`);
@@ -75,7 +93,7 @@ export default function ScanScreen() {
       return;
     }
     const uris = pendingUris;
-    setPendingUris(null);
+    closeDialog();
     try {
       await appendScanSession(db, uris, target.id);
       Alert.alert('Saved', `Added to "${target.title}".`);
@@ -112,41 +130,125 @@ export default function ScanScreen() {
         </ThemedView>
       </SafeAreaView>
 
-      {/* Save flow: name it, then file as new or append to an existing
-          library entry. */}
-      <PromptDialog
+      {/*
+       * Save flow: name it, or append to an existing document — both
+       * options live in ONE Modal. They used to be two separate pieces
+       * (a shared PromptDialog plus a sibling "append sheet" positioned
+       * absolutely in the screen below it) — a Modal always renders in
+       * its own native layer above the rest of the screen, so that sheet
+       * was permanently hidden behind the dialog's backdrop and never
+       * reachable. Keeping both options inside the same Modal is what
+       * actually makes "add to an existing document" usable.
+       */}
+      <SaveScanDialog
         visible={pendingUris != null}
-        title={pendingUris != null ? `Save ${pendingUris.length} page(s)` : ''}
-        message={
-          recentDocs.length > 0
-            ? 'Name this scan as a new document, or add these pages to an existing one below.'
-            : 'Name this scan.'
-        }
-        placeholder="e.g. Groceries Sept 14"
-        confirmLabel="Save as new"
-        initialValue={saveName}
-        onConfirm={saveAsNew}
-        onCancel={() => setPendingUris(null)}
+        pageCount={pendingUris?.length ?? 0}
+        name={saveName}
+        onChangeName={setSaveName}
+        recentDocs={recentDocs}
+        onSaveAsNew={saveAsNew}
+        onAppend={saveAppend}
+        onCancel={closeDialog}
       />
-
-      {/* Append picker — shown while the save dialog is open. */}
-      {pendingUris != null && recentDocs.length > 0 && (
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.appendSheet, { borderColor: theme.border }]}>
-          {recentDocs.slice(0, 10).map((doc) => (
-            <Pressable key={doc.id} onPress={() => saveAppend(doc)} style={styles.appendRow}>
-              <ThemedText numberOfLines={1} style={styles.appendTitle}>
-                {doc.title}
-              </ThemedText>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                {doc.pageCount} page{doc.pageCount === 1 ? '' : 's'}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </ThemedView>
-      )}
     </ThemedView>
+  );
+}
+
+/** Props for {@link SaveScanDialog}. */
+interface SaveScanDialogProps {
+  visible: boolean;
+  pageCount: number;
+  name: string;
+  onChangeName: (value: string) => void;
+  recentDocs: LibraryEntry[];
+  onSaveAsNew: () => void;
+  onAppend: (target: LibraryEntry) => void;
+  onCancel: () => void;
+}
+
+/**
+ * Save-flow dialog for a just-captured scan session: name it as a new
+ * document, or tap an existing one to append to instead. One Modal, so
+ * both options are always visible together (see the comment above).
+ */
+function SaveScanDialog({
+  visible,
+  pageCount,
+  name,
+  onChangeName,
+  recentDocs,
+  onSaveAsNew,
+  onAppend,
+  onCancel,
+}: SaveScanDialogProps) {
+  const theme = useTheme();
+
+  // Reset the append list's scroll position each time the dialog reopens,
+  // so a stale offset from a previous scan session doesn't carry over.
+  const [listKey, setListKey] = useState(0);
+  useResetOnOpen(visible, () => setListKey((k) => k + 1));
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={styles.backdrop} onPress={onCancel}>
+        <Pressable
+          style={[styles.dialogCard, { backgroundColor: theme.background, borderColor: theme.border }]}
+          onPress={(e) => e.stopPropagation()}>
+          <ThemedText type="subtitle">Save {pageCount} page{pageCount === 1 ? '' : 's'}</ThemedText>
+          <ThemedText type="small" style={[styles.dialogMessage, { color: theme.textSecondary }]}>
+            {recentDocs.length > 0
+              ? 'Name this scan as a new document, or add these pages to an existing one below.'
+              : 'Name this scan.'}
+          </ThemedText>
+
+          <TextInput
+            style={[
+              styles.input,
+              { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
+            ]}
+            value={name}
+            onChangeText={onChangeName}
+            placeholder="e.g. Groceries Sept 14"
+            placeholderTextColor={theme.textSecondary}
+            autoFocus
+            autoCorrect={false}
+            underlineColorAndroid="transparent"
+            returnKeyType="done"
+            onSubmitEditing={onSaveAsNew}
+          />
+          <AppButton label="Save as new" onPress={onSaveAsNew} disabled={name.trim().length === 0} />
+
+          {recentDocs.length > 0 && (
+            <>
+              <ThemedText type="label" style={{ color: theme.textSecondary }}>
+                Or add to an existing document
+              </ThemedText>
+              <ScrollView key={listKey} style={styles.appendList} keyboardShouldPersistTaps="handled">
+                {recentDocs.slice(0, 10).map((doc) => (
+                  <Pressable
+                    key={doc.id}
+                    onPress={() => onAppend(doc)}
+                    style={({ pressed }) => [
+                      styles.appendRow,
+                      { borderColor: theme.border },
+                      pressed && { backgroundColor: theme.backgroundElement },
+                    ]}>
+                    <ThemedText numberOfLines={1} style={styles.appendTitle}>
+                      {doc.title}
+                    </ThemedText>
+                    <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                      {doc.pageCount} page{doc.pageCount === 1 ? '' : 's'}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </>
+          )}
+
+          <AppButton label="Cancel" variant="outline" onPress={onCancel} />
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -186,15 +288,34 @@ const styles = StyleSheet.create({
   scanButton: {
     marginTop: Spacing.three,
   },
-  appendSheet: {
-    position: 'absolute',
-    left: Spacing.two,
-    right: Spacing.two,
-    bottom: BottomTabInset + Spacing.two,
+  backdrop: {
+    flex: 1,
+    backgroundColor: '#000000AA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+  },
+  dialogCard: {
     borderRadius: Radius.large,
     borderWidth: 1,
-    paddingVertical: Spacing.one,
-    maxHeight: 260,
+    padding: Spacing.four,
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '85%',
+    gap: Spacing.three,
+  },
+  dialogMessage: {
+    lineHeight: 18,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 16,
+  },
+  appendList: {
+    maxHeight: 220,
   },
   appendRow: {
     flexDirection: 'row',
@@ -202,7 +323,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.two,
+    borderRadius: Radius.small,
+    borderWidth: 1,
+    marginBottom: Spacing.half,
   },
   appendTitle: {
     flexShrink: 1,

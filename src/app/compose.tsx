@@ -17,11 +17,14 @@ import {
     ScrollView,
     StyleSheet,
     Switch,
+    useWindowDimensions,
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
+import { CenteredMessage } from '@/components/centered-message';
+import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
@@ -34,14 +37,25 @@ import {
     exportAndShareComposition,
 } from '@/lib/pdf/compose';
 
-/** Screen width the preview scales into. */
-const PREVIEW_WIDTH = 300;
+/** Legibility thresholds (plan §5): below this, export is blocked outright. */
+const BLOCK_SCALE = 0.45;
+/** Preview content padding on each side — kept in sync with `styles.content`. */
+const PREVIEW_PADDING = Spacing.four;
+/** Preview never grows past this even on large screens (tablets). */
+const MAX_PREVIEW_WIDTH = 300;
 
 export default function ComposeScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
+  // expo-router params can be `string[]` or missing for a malformed link.
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  // Scale the preview to the actual screen width instead of a fixed
+  // constant — a hardcoded 300pt overflows a 320pt-wide phone once the
+  // screen's own horizontal padding is subtracted.
+  const previewWidth = Math.min(MAX_PREVIEW_WIDTH, windowWidth - PREVIEW_PADDING * 2);
 
   const [doc, setDoc] = useState<ScanDocument | null>(null);
   const [pages, setPages] = useState<ScanPage[] | null>(null);
@@ -51,6 +65,9 @@ export default function ComposeScreen() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
+    if (id == null) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       const document = await fetchDocument(db, id);
@@ -72,7 +89,8 @@ export default function ComposeScreen() {
     return composeLayout(doc, pages, columns);
   }, [doc, pages, columns]);
 
-  const previewScale = PREVIEW_WIDTH / LETTER.width;
+  const previewScale = previewWidth / LETTER.width;
+  const blocked = layout != null && layout.minScale < BLOCK_SCALE;
 
   const verdict = useMemo(() => {
     if (layout == null) {
@@ -92,7 +110,7 @@ export default function ComposeScreen() {
     )}%. Reduce columns or remove items`;
   }, [layout]);
 
-  async function onExport() {
+  async function runExport() {
     if (doc == null || pages == null) {
       return;
     }
@@ -118,10 +136,44 @@ export default function ComposeScreen() {
     }
   }
 
+  /**
+   * Plan §5's legibility guard: below 0.45 scale, block export unless the
+   * user explicitly overrides — a silent "Blocked" label with no actual
+   * block just produces an illegible PDF the user discovers too late.
+   */
+  function onExport() {
+    if (!blocked) {
+      void runExport();
+      return;
+    }
+    Alert.alert(
+      'Text may be unreadable',
+      'At this column count some items are shrunk enough that printed text is likely illegible. Reduce columns, or export anyway.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Export anyway', style: 'destructive', onPress: () => void runExport() },
+      ],
+    );
+  }
+
+  if (id == null) {
+    return (
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <ScreenHeader title="Compose" />
+          <CenteredMessage message="No document selected." />
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
   if (doc == null || pages == null) {
     return (
       <ThemedView style={styles.container}>
-        <ThemedText style={styles.center}>Loading…</ThemedText>
+        <SafeAreaView style={styles.safeArea}>
+          <ScreenHeader title="Compose" />
+          <CenteredMessage message="Loading…" spinner />
+        </SafeAreaView>
       </ThemedView>
     );
   }
@@ -129,11 +181,14 @@ export default function ComposeScreen() {
   if (pages.length === 0) {
     return (
       <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.center}>
-          <ThemedText>This document has no pages to compose.</ThemedText>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="linkPrimary">Back</ThemedText>
-          </Pressable>
+        <SafeAreaView style={styles.safeArea}>
+          <ScreenHeader title={doc.title} />
+          <ThemedView style={styles.center}>
+            <ThemedText>This document has no pages to compose.</ThemedText>
+            <Pressable onPress={() => router.back()}>
+              <ThemedText type="linkPrimary">Back</ThemedText>
+            </Pressable>
+          </ThemedView>
         </SafeAreaView>
       </ThemedView>
     );
@@ -142,12 +197,8 @@ export default function ComposeScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <ScreenHeader title="Compose" />
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedView style={styles.headerLabel}>
-            <ThemedText type="label" style={{ color: theme.accent }}>
-              Compose
-            </ThemedText>
-          </ThemedView>
           <ThemedText type="subtitle">{doc.title}</ThemedText>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
             Combining {pages.length} page{pages.length === 1 ? '' : 's'} into
@@ -163,9 +214,9 @@ export default function ComposeScreen() {
                   style={[
                     styles.previewPage,
                     {
-                      width: PREVIEW_WIDTH / 3 - Spacing.two,
+                      width: previewWidth / 3 - Spacing.two,
                       height:
-                        ((PREVIEW_WIDTH / 3 - Spacing.two) * LETTER.height) /
+                        ((previewWidth / 3 - Spacing.two) * LETTER.height) /
                         LETTER.width,
                     },
                   ]}>
@@ -194,7 +245,11 @@ export default function ComposeScreen() {
             </View>
           )}
 
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+          <ThemedText
+            type="small"
+            style={{
+              color: blocked ? theme.danger : layout != null && layout.minScale < 0.6 ? theme.warning : theme.textSecondary,
+            }}>
             {layout != null
               ? `${layout.pages.length} page(s) · ${verdict}`
               : ''}
@@ -238,7 +293,8 @@ export default function ComposeScreen() {
           </ThemedView>
 
           <AppButton
-            label={exporting ? 'Exporting…' : 'Export packed PDF'}
+            label={exporting ? 'Exporting…' : blocked ? 'Review before exporting' : 'Export packed PDF'}
+            variant={blocked ? 'danger' : 'filled'}
             onPress={onExport}
             disabled={exporting}
             style={styles.exportButton}
@@ -265,9 +321,6 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.four,
     gap: Spacing.three,
-  },
-  headerLabel: {
-    marginBottom: -Spacing.two,
   },
   previewRow: {
     flexDirection: 'row',

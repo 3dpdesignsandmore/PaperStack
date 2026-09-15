@@ -2,7 +2,7 @@
  * Settings screen (plan §8): defaults, recipients, page size, about.
  * Interactive: scan-name prefix used to suggest names in the save dialog.
  */
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
@@ -55,6 +55,7 @@ const SECTIONS: SettingsSection[] = [
 export default function SettingsScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const router = useRouter();
 
   const [prefix, setPrefix] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -122,6 +123,26 @@ export default function SettingsScreen() {
               </ThemedText>
             </ThemedView>
           ))}
+
+          {__DEV__ && (
+            <ThemedView
+              type="backgroundElement"
+              style={[styles.section, { borderColor: theme.border }]}>
+              <ThemedText type="label" style={{ color: theme.textSecondary }}>
+                Dev only
+              </ThemedText>
+              <ThemedText type="defaultSemiBold">Invisible text spike</ThemedText>
+              <ThemedText type="small" style={styles.rowDetail}>
+                Verifies the pdf-lib searchable-text layer on this device.
+              </ThemedText>
+              <AppButton
+                label="Run OCR spike"
+                variant="outline"
+                onPress={() => router.push('/ocr-spike')}
+                style={styles.devButton}
+              />
+            </ThemedView>
+          )}
         </ScrollView>
       </SafeAreaView>
 
@@ -179,5 +200,9 @@ const styles = StyleSheet.create({
   },
   rowDetail: {
     lineHeight: 18,
+  },
+  devButton: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.one,
   },
 });

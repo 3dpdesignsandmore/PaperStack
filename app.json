@@ -7,12 +7,15 @@
     "icon": "./assets/images/icon.png",
     "scheme": "paperstack",
     "userInterfaceStyle": "automatic",
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.tdpdesignsandmore.paperstack",
       "infoPlist": {
-        "NSCameraUsageDescription": "PaperStack uses the camera to scan documents and receipts.",
-        "NSPhotoLibraryAddUsageDescription": "PaperStack saves scans and exported PDFs to your photo library."
+        "NSCameraUsageDescription": "PaperStack uses the camera to scan documents and receipts."
       }
     },
     "android": {
@@ -49,6 +52,12 @@
         "projectId": "8e673687-e7e4-42e8-b23e-8e3685c6518e"
       }
     },
-    "owner": "tdpdesignsandmores-team"
+    "owner": "tdpdesignsandmores-team",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8e673687-e7e4-42e8-b23e-8e3685c6518e"
+    }
   }
 }

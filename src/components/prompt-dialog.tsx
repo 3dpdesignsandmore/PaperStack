@@ -4,7 +4,7 @@
  * `Alert.prompt` exists only on iOS, so PaperStack needs its own modal
  * for "name this scan" (and future one-field prompts like rename).
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
     Modal,
     Platform,
@@ -17,6 +17,7 @@ import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
+import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Props for {@link PromptDialog}. */
@@ -54,11 +55,7 @@ export function PromptDialog({
 
   // The dialog stays mounted; pick up a new initialValue each time it
   // opens (e.g. the prefix loaded from settings just before showing).
-  useEffect(() => {
-    if (visible) {
-      setValue(initialValue);
-    }
-  }, [visible, initialValue]);
+  useResetOnOpen(visible, () => setValue(initialValue));
 
   return (
     <Modal

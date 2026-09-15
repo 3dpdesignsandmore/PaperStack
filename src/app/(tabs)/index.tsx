@@ -76,12 +76,15 @@ export default function LibraryScreen() {
               Your scans
             </ThemedText>
           </ThemedView>
-          <ThemedView style={styles.headerText}>
-            <ThemedText type="title" style={styles.title}>
-              Library
-            </ThemedText>
+          <ThemedText type="title" style={styles.title}>
+            Library
+          </ThemedText>
+          <ThemedView style={styles.headerRow}>
             {entries != null && (
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              <ThemedText
+                type="small"
+                numberOfLines={1}
+                style={[styles.entryCount, { color: theme.textSecondary }]}>
                 {entries.length} document{entries.length === 1 ? '' : 's'}
               </ThemedText>
             )}
@@ -222,17 +225,21 @@ const styles = StyleSheet.create({
   header: {
     gap: Spacing.two,
   },
-  headerText: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
     gap: Spacing.two,
   },
+  entryCount: {
+    flexShrink: 1,
+  },
   title: {
     fontSize: 34,
     lineHeight: 40,
     fontWeight: '800',
+    paddingHorizontal: Spacing.four,
   },
   headerLabel: {
     paddingHorizontal: Spacing.four,

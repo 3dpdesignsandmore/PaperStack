@@ -3,6 +3,7 @@
  * pages, with export (as-is or combined N-up), rename, add-pages, and
  * delete. Reached from a Library card via router.push('/document/[id]').
  */
+import { Directory } from 'expo-file-system';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -11,7 +12,9 @@ import { Alert, FlatList, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
+import { CenteredMessage } from '@/components/centered-message';
 import { PromptDialog } from '@/components/prompt-dialog';
+import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
@@ -21,10 +24,13 @@ import { fetchDocument, fetchPages, renameDocument } from '@/lib/db/queries';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import { scanPages } from '@/lib/scanner';
-import { Directory } from 'expo-file-system';
 
 export default function DocumentDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
+  // expo-router params can legitimately be `string[]` (repeated query keys)
+  // or missing entirely for a malformed deep link — never trust the typed
+  // hint alone.
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const db = useSQLiteContext();
   const theme = useTheme();
@@ -37,6 +43,10 @@ export default function DocumentDetailScreen() {
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
+    if (id == null) {
+      setMissing(true);
+      return;
+    }
     const [doc, docPages] = await Promise.all([
       fetchDocument(db, id),
       fetchPages(db, id),
@@ -84,6 +94,9 @@ export default function DocumentDetailScreen() {
   }
 
   async function onAddPages() {
+    if (id == null) {
+      return;
+    }
     setAdding(true);
     try {
       const { pageUris } = await scanPages();
@@ -148,11 +161,14 @@ export default function DocumentDetailScreen() {
   if (missing) {
     return (
       <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.center}>
-          <ThemedText>Document not found.</ThemedText>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="linkPrimary">Back to Library</ThemedText>
-          </Pressable>
+        <SafeAreaView style={styles.safeArea}>
+          <ScreenHeader title="Document" />
+          <ThemedView style={styles.center}>
+            <ThemedText>Document not found.</ThemedText>
+            <Pressable onPress={() => router.back()}>
+              <ThemedText type="linkPrimary">Back to Library</ThemedText>
+            </Pressable>
+          </ThemedView>
         </SafeAreaView>
       </ThemedView>
     );
@@ -161,13 +177,19 @@ export default function DocumentDetailScreen() {
   if (document == null || pages == null) {
     return (
       <ThemedView style={styles.container}>
-        <ThemedText style={styles.center}>Loading…</ThemedText>
+        <SafeAreaView style={styles.safeArea}>
+          <ScreenHeader title="Document" />
+          <CenteredMessage message="Loading…" spinner />
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   return (
     <ThemedView style={styles.container}>
+      <SafeAreaView edges={['top']}>
+        <ScreenHeader title={document.title} />
+      </SafeAreaView>
       <FlatList
         data={pages}
         keyExtractor={(page) => page.id}
@@ -209,7 +231,7 @@ export default function DocumentDetailScreen() {
         confirmLabel="Rename"
         onConfirm={async (title) => {
           setRenaming(false);
-          await renameDocument(db, id, title);
+          await renameDocument(db, document.id, title);
           await load();
         }}
         onCancel={() => setRenaming(false)}
@@ -220,6 +242,9 @@ export default function DocumentDetailScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  safeArea: {
     flex: 1,
   },
   center: {

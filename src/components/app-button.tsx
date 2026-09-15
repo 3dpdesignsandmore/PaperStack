@@ -3,9 +3,7 @@
  * emphasis) or outlined (secondary emphasis). One canonical style so buttons
  * look identical everywhere they appear.
  */
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
