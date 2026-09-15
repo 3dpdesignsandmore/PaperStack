@@ -1,13 +1,12 @@
 /**
- * Compose screen (plan §5, Phase 4): the N-up composition cockpit.
+ * Compose screen (plan §5, Phase 4): the N-up composition cockpit for one
+ * document's pages. Reached from the document detail screen's Export →
+ * Combine option via /compose?id=<docId>.
  *
- * Multi-select arrives from the Library via `/compose?ids=a,b,c`. Presents:
- * - a live page preview (schematic rectangles of the packed layout —
- *   exactly what `packColumns` computed, scaled to the screen);
- * - a column-count slider with the §5 legibility verdict computed live
- *   from the same engine that will export;
- * - captions/separators toggles;
- * - Export → packed PDF via the composition exporter + share sheet.
+ * Presents a live page preview (schematic rectangles of the packed
+ * layout — exactly what `packColumns` computed), a column selector with
+ * the §5 legibility verdict computed live, captions/separators toggles,
+ * and Export → packed PDF + share sheet.
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -31,7 +30,6 @@ import { LETTER } from '@/lib/layout/pack-columns';
 import {
   composeLayout,
   exportAndShareComposition,
-  type ComposeEntry,
 } from '@/lib/pdf/compose';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 
@@ -39,12 +37,13 @@ import type { ScanDocument, ScanPage } from '@/lib/model';
 const PREVIEW_WIDTH = 300;
 
 export default function ComposeScreen() {
-  const { ids } = useLocalSearchParams<{ ids: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const db = useSQLiteContext();
   const theme = useTheme();
 
-  const [entries, setEntries] = useState<ComposeEntry[] | null>(null);
+  const [doc, setDoc] = useState<ScanDocument | null>(null);
+  const [pages, setPages] = useState<ScanPage[] | null>(null);
   const [columns, setColumns] = useState(3);
   const [separators, setSeparators] = useState(true);
   const [captions, setCaptions] = useState(true);
@@ -53,34 +52,24 @@ export default function ComposeScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const idList = (ids ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-      const loaded: ComposeEntry[] = [];
-      for (const id of idList) {
-        const doc: ScanDocument | null = await fetchDocument(db, id);
-        const pages: ScanPage[] = await fetchPages(db, id);
-        if (doc == null || pages.length === 0) {
-          continue;
-        }
-        loaded.push({ document: doc, page: pages[0] });
-      }
+      const document = await fetchDocument(db, id);
+      const docPages = await fetchPages(db, id);
       if (!cancelled) {
-        setEntries(loaded);
+        setDoc(document);
+        setPages(docPages);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [db, ids]);
+  }, [db, id]);
 
   const layout = useMemo(() => {
-    if (entries == null) {
+    if (doc == null || pages == null) {
       return null;
     }
-    return composeLayout(entries, columns);
-  }, [entries, columns]);
+    return composeLayout(doc, pages, columns);
+  }, [doc, pages, columns]);
 
   const previewScale = PREVIEW_WIDTH / LETTER.width;
 
@@ -103,19 +92,20 @@ export default function ComposeScreen() {
   }, [layout]);
 
   async function onExport() {
-    if (entries == null) {
+    if (doc == null || pages == null) {
       return;
     }
     setExporting(true);
     try {
       const result = await exportAndShareComposition(
-        entries,
+        doc,
+        pages,
         { columns, separators, captions },
-        'PaperStack composition',
+        doc.title,
       );
       Alert.alert(
         'Exported',
-        `${entries.length} receipts on ${result.pageCount} page(s) · ${Math.round(
+        `${pages.length} page(s) across ${result.pageCount} sheet(s) · ${Math.round(
           result.sizeBytes / 1024,
         )} KB.`,
       );
@@ -127,7 +117,7 @@ export default function ComposeScreen() {
     }
   }
 
-  if (entries == null) {
+  if (doc == null || pages == null) {
     return (
       <ThemedView style={styles.container}>
         <ThemedText style={styles.center}>Loading…</ThemedText>
@@ -135,13 +125,13 @@ export default function ComposeScreen() {
     );
   }
 
-  if (entries.length === 0) {
+  if (pages.length === 0) {
     return (
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.center}>
-          <ThemedText>Nothing selected to compose.</ThemedText>
+          <ThemedText>This document has no pages to compose.</ThemedText>
           <Pressable onPress={() => router.back()}>
-            <ThemedText type="linkPrimary">Back to Library</ThemedText>
+            <ThemedText type="linkPrimary">Back</ThemedText>
           </Pressable>
         </SafeAreaView>
       </ThemedView>
@@ -152,9 +142,10 @@ export default function ComposeScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="subtitle">
-            Packed pages · {entries.length} item
-            {entries.length === 1 ? '' : 's'}
+          <ThemedText type="subtitle">{doc.title}</ThemedText>
+          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            Combining {pages.length} page{pages.length === 1 ? '' : 's'} into
+            packed sheets
           </ThemedText>
 
           {/* Live preview: the true packed geometry, scaled down. */}

@@ -1,6 +1,6 @@
 /**
  * Document detail (plan §8, Phase 2): full-page viewer for one document's
- * pages, with rename, add-pages (appends a new scanner session), and
+ * pages, with export (as-is or combined N-up), rename, add-pages, and
  * delete. Reached from a Library card via router.push('/document/[id]').
  */
 import { useCallback, useState } from 'react';
@@ -99,7 +99,33 @@ export default function DocumentDetailScreen() {
     }
   }
 
-  async function onExport() {
+  /** Export flow entry: choose one-page-per-scan or combined N-up. */
+  function onExport() {
+    if (document == null) {
+      return;
+    }
+    Alert.alert(
+      'Export PDF',
+      'Export each scan on its own page, or combine them multiple-per-page?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'One per page',
+          onPress: () => {
+            void exportAsIs();
+          },
+        },
+        {
+          text: 'Combine',
+          onPress: () => {
+            router.push(`/compose?id=${document.id}`);
+          },
+        },
+      ],
+    );
+  }
+
+  async function exportAsIs() {
     if (document == null || pages == null) {
       return;
     }

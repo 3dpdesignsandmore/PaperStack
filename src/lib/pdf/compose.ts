@@ -1,7 +1,10 @@
 /**
- * N-up composition export (plan §5): pack selected documents' first pages
- * — one item per document — into multi-up Letter pages via the column
- * engine, then render the packed PDF and share it.
+ * N-up composition export (plan §5): pack pages into multi-up Letter
+ * pages via the column engine, then render the packed PDF and share it.
+ *
+ * Compositions are per-document: every page of the selected document
+ * becomes an item. (Multi-document composition, if ever wanted, is a
+ * matter of concatenating page lists before calling in.)
  *
  * This is PaperStack's signature feature: N receipts per page instead of
  * one per page, with a legibility guard surfaced before export.
@@ -20,20 +23,13 @@ import {
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import { sanitizeTitle } from '@/lib/pdf/export-document';
 
-/** Container for one document selected into a composition. */
-export interface ComposeEntry {
-  document: ScanDocument;
-  /** The page that represents the document in the pack (its first page). */
-  page: ScanPage;
-}
-
 /** Options for building a packed composition PDF. */
 export interface ComposeOptions {
   /** Column count (plan §5 N-per-page mode). */
   columns: number;
   /** Print hairline separators between packed items. */
   separators: boolean;
-  /** Print `title · date` captions under items. */
+  /** Print titles under items. */
   captions: boolean;
 }
 
@@ -48,44 +44,61 @@ export const COMPOSE_GEO: Omit<PackOptions, 'columns'> = {
 /** Caption height reserve, in points. */
 const CAPTION_HEIGHT = 14;
 
+/** Per-page caption text: `title` (single page) or `title · pN`. */
+function captionsFor(doc: ScanDocument, pages: ScanPage[]): Map<string, string> {
+  const map = new Map<string, string>();
+  pages.forEach((page, index) => {
+    const suffix = pages.length > 1 ? ` · p${index + 1}` : '';
+    map.set(page.id, `${doc.title}${suffix}`.slice(0, 40));
+  });
+  return map;
+}
+
 /**
- * Run the packer for the current selection and columns. Caption rows are
- * deducted from printable height so pack and render agree (the preview
- * and the PDF both consume this same result).
+ * Run the packer for one document's pages. Captions are NOT deducted from
+ * printable height in v1 — items keep full packing room and captions may
+ * overlap the tile below on very tight packs; revisit with §5 polish.
  */
 export function composeLayout(
-  entries: ComposeEntry[],
+  doc: ScanDocument,
+  pages: ScanPage[],
   columns: number,
 ): { pages: PackedPage[]; minScale: number } {
-  const items: PackItem[] = entries.map((entry) => ({
-    id: entry.document.id,
-    naturalWidth: entry.page.widthPx,
-    naturalHeight: entry.page.heightPx,
+  const items: PackItem[] = pages.map((page) => ({
+    id: page.id,
+    naturalWidth: page.widthPx,
+    naturalHeight: page.heightPx,
   }));
 
   const result = packColumns(items, { ...COMPOSE_GEO, columns });
   return { pages: result.pages, minScale: result.minScale };
 }
 
+/** Where packed-page images live, by item id. */
+function imageUrisByItem(pages: ScanPage[]): Map<string, string> {
+  return new Map(pages.map((page) => [page.id, page.imagePath]));
+}
+
 /**
- * Render the packed composition to PDF bytes. Separators are hairlines
- * between items; captions print the document title under each tile.
+ * Render the packed composition to PDF bytes: one Letter page per packed
+ * page, items drawn at their computed rects, optional hairline separators
+ * and caption text.
  */
 export async function buildPackedPdf(
-  entries: ComposeEntry[],
+  doc: ScanDocument,
+  pages: ScanPage[],
   options: ComposeOptions,
 ): Promise<Uint8Array> {
-  const { pages } = composeLayout(entries, options.columns);
+  const { pages: packedPages } = composeLayout(doc, pages, options.columns);
 
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle('PaperStack composition');
+  pdfDoc.setTitle(doc.title);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  const byDoc = new Map(
-    entries.map((e) => [e.document.id, e] satisfies [string, ComposeEntry][]),
-  );
+  const imageUris = imageUrisByItem(pages);
+  const captions = captionsFor(doc, pages);
 
-  for (const packedPage of pages) {
+  for (const packedPage of packedPages) {
     const pdfPage = pdfDoc.addPage([LETTER.width, LETTER.height]);
 
     if (options.separators) {
@@ -102,11 +115,11 @@ export async function buildPackedPdf(
     }
 
     for (const item of packedPage.items) {
-      const entry = byDoc.get(item.id);
-      if (entry == null) {
+      const uri = imageUris.get(item.id);
+      if (uri == null) {
         continue;
       }
-      const jpgBytes = await new File(entry.page.imagePath).bytes();
+      const jpgBytes = await new File(uri).bytes();
       const image = await pdfDoc.embedJpg(jpgBytes);
       pdfPage.drawImage(image, {
         x: item.x,
@@ -116,13 +129,16 @@ export async function buildPackedPdf(
       });
 
       if (options.captions) {
-        pdfPage.drawText(entry.document.title.slice(0, 40), {
-          x: item.x,
-          y: item.y - CAPTION_HEIGHT + 2,
-          size: 8,
-          font,
-          color: rgb(0.35, 0.35, 0.35),
-        });
+        const caption = captions.get(item.id);
+        if (caption != null) {
+          pdfPage.drawText(caption, {
+            x: item.x,
+            y: item.y - CAPTION_HEIGHT + 2,
+            size: 8,
+            font,
+            color: rgb(0.35, 0.35, 0.35),
+          });
+        }
       }
     }
   }
@@ -131,19 +147,21 @@ export async function buildPackedPdf(
 }
 
 /**
- * Export and share the packed composition. Sequential by design (write
- * then share), writing into documents/exports/compositions/.
+ * Export and share the packed composition for one document's pages.
+ * Sequential by design (write then share); writes into
+ * documents/exports/compositions/.
  */
 export async function exportAndShareComposition(
-  entries: ComposeEntry[],
+  doc: ScanDocument,
+  pages: ScanPage[],
   options: ComposeOptions,
   fileName: string,
 ): Promise<{ uri: string; sizeBytes: number; pageCount: number }> {
-  if (entries.length === 0) {
-    throw new Error('Nothing selected to compose');
+  if (pages.length === 0) {
+    throw new Error('Cannot compose a document with no pages');
   }
 
-  const bytes = await buildPackedPdf(entries, options);
+  const bytes = await buildPackedPdf(doc, pages, options);
 
   const dir = new Directory(Paths.document, 'exports', 'compositions');
   if (!dir.exists) {
@@ -160,10 +178,13 @@ export async function exportAndShareComposition(
   }
   await Sharing.shareAsync(file.uri, {
     mimeType: 'application/pdf',
-    dialogTitle: 'PaperStack composition',
+    dialogTitle: doc.title,
     UTI: 'com.adobe.pdf',
   });
 
-  const pageCount = composeLayout(entries, options.columns).pages.length;
-  return { uri: file.uri, sizeBytes: file.size, pageCount };
+  return {
+    uri: file.uri,
+    sizeBytes: file.size,
+    pageCount: composeLayout(doc, pages, options.columns).pages.length,
+  };
 }
