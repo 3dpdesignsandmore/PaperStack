@@ -394,7 +394,7 @@ Each phase should end with something runnable on your phone.
 | **1. Capture** | Scanner plugin integrated; scans saved to disk + DB; thumbnails | 2–3 days |
 | **2. Library** | Grid, document detail, rename/delete/reorder/tag, search by title | 3–4 days |
 | **3. PDF export (single)** | `pdf-lib` polyfills solved; one-page-per-scan export; share sheet | 3–5 days |
-| **4. N-up engine** | Column packing, legibility guard, modes, captions, separators, live preview, downscaling, unit tests | 5–7 days |
+| **4. N-up engine** | Column packing, legibility guard, modes, captions, separators, live preview, downscaling, unit tests | ✅ shipped 2026-09-15 (combine accessed via Export → Combine; auto-fit mode computed by `fitColumns`, surfacing an "Auto" chip is pending polish) | 5–7 days |
 | **5. OCR** | Library spike, text layer, extraction heuristics, correction UI | 5–7 days |
 | **6. Annotation** | Skia canvas; text, highlight, redaction; normalized persist/restore; render into PDF | 5–7 days |
 | **7. Sharing polish** | Saved recipients, filename templates | 2 days |
@@ -425,7 +425,7 @@ Single-page PDF export moved *before* the N-up engine. The polyfill and image-em
 
 - ~~Web target~~ — decided: out (§2).
 - Page size default — Letter or A4 by locale? (Letter, US-based; make it a setting.)
-- Do receipts belong to a "batch"/expense-report entity, or is compose purely ad-hoc selection? Ad-hoc is simpler for v1; batches are the obvious v2.
+- Do receipts belong to a "batch"/expense-report entity, or is compose purely ad-hoc selection? ~~Ad-hoc is simpler for v1; batches are the obvious v2.~~ **Resolved 2026-09-15 by use:** combining lives inside Export on a document ("One per page" / "Combine") and packs *that document's pages* — no multi-select, no batch entity. Revisit only if users ask to mix documents in one pack.
 - Monetization — free, one-time paid, or free with a paid export tier? Decide before the store listing, not after.
 - Password-protected PDFs? `pdf-lib` supports encryption; a plausible paid-tier feature.
 
