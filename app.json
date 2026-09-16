@@ -46,7 +46,8 @@
           "cameraPermission": "PaperStack uses the camera to scan documents and receipts.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-mail-composer"
     ],
     "experiments": {
       "typedRoutes": true,

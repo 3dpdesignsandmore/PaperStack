@@ -13,6 +13,7 @@
  */
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
@@ -24,10 +25,12 @@ import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
 import { LegibilityMeter } from '@/components/legibility-meter';
 import { ScreenHeader } from '@/components/screen-header';
+import { SendSheet } from '@/components/send-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { logInfo, logThrown } from '@/lib/debug-log';
 import { fetchDocument, fetchPages } from '@/lib/db/queries';
 import { fitColumns, LETTER, type PlacedItem } from '@/lib/layout/pack-columns';
 import type { ScanDocument, ScanPage } from '@/lib/model';
@@ -78,6 +81,8 @@ export default function ComposeScreen() {
 
   const [documents, setDocuments] = useState<ScanDocument[] | null>(null);
   const [pages, setPages] = useState<ScanPage[] | null>(null);
+  // The just-exported file offered by the post-export send sheet.
+  const [sentFile, setSentFile] = useState<{ uri: string; subject: string } | null>(null);
   const [columnMode, setColumnMode] = useState<'auto' | number>('auto');
   const [separators, setSeparators] = useState(true);
   const [captions, setCaptions] = useState(true);
@@ -143,15 +148,11 @@ export default function ComposeScreen() {
         pages,
         { columns, separators, captions },
       );
-      Alert.alert(
-        'Exported',
-        `${pages.length} page(s) across ${result.pageCount} sheet(s) · ${Math.round(
-          result.sizeBytes / 1024,
-        )} KB.`,
-      );
+      logInfo('export', `composition ${pages.length}p: ${result.pageCount} sheets, ${result.sizeBytes}B`);
+      setSentFile({ uri: result.uri, subject: combinedTitle(documents) });
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      Alert.alert('Export failed', message);
+      logThrown('export', e);
+      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
     } finally {
       setExporting(false);
     }
@@ -283,6 +284,27 @@ export default function ComposeScreen() {
           />
         </ScrollView>
       </SafeAreaView>
+
+      {/* Post-export send sheet (Phase 7): one-tap sends to saved
+          recipients after the stacked PDF is written. */}
+      <SendSheet
+        visible={sentFile != null}
+        fileUri={sentFile?.uri ?? ''}
+        subject={sentFile?.subject ?? title}
+        onClose={() => setSentFile(null)}
+        onShareViaOs={async () => {
+          const file = sentFile;
+          if (file == null) {
+            return;
+          }
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: file.subject,
+            UTI: 'com.adobe.pdf',
+          });
+          setSentFile(null);
+        }}
+      />
     </ThemedView>
   );
 }

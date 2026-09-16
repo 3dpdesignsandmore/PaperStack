@@ -48,6 +48,9 @@ import {
     setSetting,
     type RecipientRow,
 } from '@/lib/db/queries';
+import { DATABASE_NAME } from '@/lib/db/migrations';
+import { createAndShareBackup } from '@/lib/backup';
+import { exportAndShareLog, logInfo, logThrown } from '@/lib/debug-log';
 import { FILENAME_TEMPLATE_KEY } from '@/lib/pdf/filename';
 
 /** Quality presets exposed in Settings, mapped to `croppedImageQuality`. */
@@ -123,6 +126,9 @@ export default function SettingsScreen() {
   // Saved recipients (Phase 7), most recently used first.
   const [recipients, setRecipients] = useState<RecipientRow[]>([]);
   const [addingRecipient, setAddingRecipient] = useState(false);
+  // Backup + diagnostic-log busy flags.
+  const [backingUp, setBackingUp] = useState(false);
+  const [exportingLog, setExportingLog] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -170,7 +176,7 @@ export default function SettingsScreen() {
 
   /* ---------------- Recipients (Phase 7) ---------------- */
 
-  async function onSaveRecipient(label: string, email: string) {
+  async function onSaveRecipient(label: string, email: string, phone: string) {
     setAddingRecipient(false);
     const trimmed = label.trim();
     if (trimmed.length === 0) {
@@ -180,7 +186,7 @@ export default function SettingsScreen() {
       id: generateId(),
       label: trimmed,
       email: email.trim().length > 0 ? email.trim() : null,
-      phone: null,
+      phone: phone.trim().length > 0 ? phone.trim() : null,
     });
     setRecipients(await fetchRecipients(db));
   }
@@ -197,6 +203,40 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  }
+
+  /* ---------------- Backup & diagnostics ---------------- */
+
+  async function onBackup() {
+    setBackingUp(true);
+    logInfo('backup', 'starting');
+    try {
+      const result = await createAndShareBackup(db, DATABASE_NAME);
+      logInfo('backup', `created: ${result.fileCount} files, ${result.sizeBytes} bytes`);
+      Alert.alert(
+        'Backup created',
+        `${result.fileCount} item${result.fileCount === 1 ? '' : 's'} · ${Math.round(
+          result.sizeBytes / 1024,
+        )} KB. The zip is also saved under Documents/backups.`,
+      );
+    } catch (e: unknown) {
+      logThrown('backup', e);
+      Alert.alert('Backup failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBackingUp(false);
+    }
+  }
+
+  async function onExportLog() {
+    setExportingLog(true);
+    try {
+      await exportAndShareLog();
+    } catch (e: unknown) {
+      logThrown('debug-log', e);
+      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportingLog(false);
+    }
   }
 
   return (
@@ -334,9 +374,12 @@ export default function SettingsScreen() {
                       <ThemedText type="defaultSemiBold" numberOfLines={1}>
                         {recipient.label}
                       </ThemedText>
-                      {recipient.email != null && (
+                      {/* "email · phone" with only the parts that exist — a
+                          person can have either, both, or (transiently)
+                          neither if a merge kept the label. */}
+                      {(recipient.email != null || recipient.phone != null) && (
                         <ThemedText type="small" style={{ color: theme.textSecondary }} numberOfLines={1}>
-                          {recipient.email}
+                          {[recipient.email, recipient.phone].filter((part) => part != null && part !== '').join(' · ')}
                         </ThemedText>
                       )}
                     </View>
@@ -358,6 +401,41 @@ export default function SettingsScreen() {
                 </View>
               </>
             )}
+          </AppCard>
+
+          {/* Backup & diagnostics (plan §9) */}
+          <AppCard style={styles.card}>
+            <ThemedText type="label" style={[styles.cardLabel, { color: theme.textSecondary }]}>
+              Backup &amp; support
+            </ThemedText>
+            <SettingsRow>
+              <View style={styles.rowText}>
+                <ThemedText type="defaultSemiBold">Backup everything</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  One zip with every scan, export, tag, recipient, and setting. Share it anywhere; restore by unzipping over the app&apos;s documents folder.
+                </ThemedText>
+              </View>
+              <AppButton
+                label={backingUp ? 'Backing up…' : 'Back up'}
+                variant="outline"
+                onPress={() => void onBackup()}
+                disabled={backingUp}
+              />
+            </SettingsRow>
+            <SettingsRow last>
+              <View style={styles.rowText}>
+                <ThemedText type="defaultSemiBold">Diagnostic log</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  A plain-text log of recent app activity (no document content) to send to support.
+                </ThemedText>
+              </View>
+              <AppButton
+                label={exportingLog ? 'Exporting…' : 'Export log'}
+                variant="outline"
+                onPress={() => void onExportLog()}
+                disabled={exportingLog}
+              />
+            </SettingsRow>
           </AppCard>
 
           {SECTIONS.map((section) => (
@@ -416,7 +494,7 @@ export default function SettingsScreen() {
 
       <AddRecipientDialog
         visible={addingRecipient}
-        onSave={(label, email) => void onSaveRecipient(label, email)}
+        onSave={(label, email, phone) => void onSaveRecipient(label, email, phone)}
         onCancel={() => setAddingRecipient(false)}
       />
     </ThemedView>
@@ -426,24 +504,26 @@ export default function SettingsScreen() {
 /** Props for {@link AddRecipientDialog}. */
 interface AddRecipientDialogProps {
   visible: boolean;
-  onSave: (label: string, email: string) => void;
+  onSave: (label: string, email: string, phone: string) => void;
   onCancel: () => void;
 }
 
 /**
- * Two-field dialog for a new saved recipient: a label (required) and an
- * optional email. `PromptDialog` is single-field, and recipients are the
- * one place needing two — so this is its own small modal in the same
- * visual language, not a second prompt stacked on the first.
+ * Three-field dialog for a new saved recipient: a label (required) plus
+ * an optional email and phone — one record per person, so both channels
+ * live on the same row. `PromptDialog` is single-field; this is its own
+ * small modal in the same visual language.
  */
 function AddRecipientDialog({ visible, onSave, onCancel }: AddRecipientDialogProps) {
   const theme = useTheme();
   const [label, setLabel] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
 
   useResetOnOpen(visible, () => {
     setLabel('');
     setEmail('');
+    setPhone('');
   });
 
   return (
@@ -454,7 +534,7 @@ function AddRecipientDialog({ visible, onSave, onCancel }: AddRecipientDialogPro
           onPress={(e) => e.stopPropagation()}>
           <ThemedText type="subtitle">Add recipient</ThemedText>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            A label for this share target, plus an optional email — the OS share sheet fills the address from it.
+            A person you send PDFs to. Fill either channel — or both — you can send either way later.
           </ThemedText>
           <TextInput
             style={[
@@ -482,6 +562,20 @@ function AddRecipientDialog({ visible, onSave, onCancel }: AddRecipientDialogPro
             keyboardType="email-address"
             autoCorrect={false}
             underlineColorAndroid="transparent"
+            returnKeyType="next"
+          />
+          <TextInput
+            style={[
+              styles.dialogInput,
+              { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
+            ]}
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="Phone, for texts (optional)"
+            placeholderTextColor={theme.textSecondary}
+            keyboardType="phone-pad"
+            autoCorrect={false}
+            underlineColorAndroid="transparent"
             returnKeyType="done"
           />
           <View style={styles.dialogActions}>
@@ -489,7 +583,7 @@ function AddRecipientDialog({ visible, onSave, onCancel }: AddRecipientDialogPro
             <AppButton
               label="Save"
               disabled={label.trim().length === 0}
-              onPress={() => onSave(label, email)}
+              onPress={() => onSave(label, email, phone)}
             />
           </View>
         </Pressable>

@@ -38,7 +38,9 @@ import {
   type TagRow,
 } from '@/lib/db/queries';
 import type { ScanDocument, ScanPage } from '@/lib/model';
+import { SendSheet } from '@/components/send-sheet';
 import { exportAndShareDocument } from '@/lib/pdf/export-document';
+import { logInfo, logThrown } from '@/lib/debug-log';
 import { scanPages } from '@/lib/scanner';
 
 export default function DocumentDetailScreen() {
@@ -62,6 +64,8 @@ export default function DocumentDetailScreen() {
   // and `load()` restores the DB order.
   const [reordering, setReordering] = useState(false);
   const [draftOrder, setDraftOrder] = useState<ScanPage[]>([]);
+  // The just-exported file the send sheet offers recipient sends for.
+  const [sentFile, setSentFile] = useState<{ uri: string; subject: string } | null>(null);
   // Tags on this document (Phase 2).
   const [tags, setTags] = useState<TagRow[]>([]);
   const [addingTag, setAddingTag] = useState(false);
@@ -180,14 +184,14 @@ export default function DocumentDetailScreen() {
     }
     setExporting(true);
     try {
+      // Write the file and hand it to the OS share sheet (the canonical
+      // path), then open the send sheet for one-tap recipient sends.
       const result = await exportAndShareDocument(db, document, pages);
-      Alert.alert(
-        'Exported',
-        `${result.pageCount} page(s) · ${Math.round(result.sizeBytes / 1024)} KB PDF.`,
-      );
+      logInfo('export', `document ${document.id}: ${result.pageCount}p, ${result.sizeBytes}B`);
+      setSentFile({ uri: result.uri, subject: document.title });
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      Alert.alert('Export failed', message);
+      logThrown('export', e);
+      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
     } finally {
       setExporting(false);
     }
@@ -458,6 +462,35 @@ export default function DocumentDetailScreen() {
           void onAddTag(name);
         }}
         onCancel={() => setAddingTag(false)}
+      />
+
+      {/* Post-export send sheet (Phase 7): one-tap sends to saved
+          recipients after the shared-out PDF is written. */}
+      <SendSheet
+        visible={sentFile != null}
+        fileUri={sentFile?.uri ?? ''}
+        subject={sentFile?.subject ?? document.title}
+        onClose={() => {
+          const file = sentFile;
+          setSentFile(null);
+          if (file != null) {
+            logInfo('export', `send sheet closed for ${file.subject}`);
+          }
+        }}
+        onShareViaOs={async () => {
+          const file = sentFile;
+          if (file == null) {
+            return;
+          }
+          await import('expo-sharing').then((m) =>
+            m.shareAsync(file.uri, {
+              mimeType: 'application/pdf',
+              dialogTitle: file.subject,
+              UTI: 'com.adobe.pdf',
+            }),
+          );
+          setSentFile(null);
+        }}
       />
     </ThemedView>
   );
