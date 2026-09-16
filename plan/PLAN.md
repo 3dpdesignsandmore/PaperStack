@@ -1,7 +1,7 @@
 # PaperStack — Technical Plan
 
-**Version:** 0.3
-**Date:** 2026-09-14
+**Version:** 0.4
+**Date:** 2026-09-16
 **Repo:** `D:\Git\PaperStack`
 **Stack:** Expo SDK 57 · React Native 0.86.3 · React 19.2.3 · TypeScript 6.0.3
 **Target:** iOS + Android, public store release
@@ -33,33 +33,25 @@ Three things separate it from the crowded field of scanner apps:
 
 ## 2. Where the repo is today
 
-The project is scaffolded from the Expo starter template and is otherwise empty of product code.
+Updated 2026-09-16 (originally written 2026-09-14 against the bare starter).
 
 **Present:**
 
-- `expo` 57.0.22, `expo-router` 57.0.21 (file-based routing rooted at `src/app`)
-- `react-native` 0.86.3, `react` 19.2.3, `typescript` 6.0.3 (`strict: true`)
-- `react-native-reanimated` 4.5.1 + `react-native-worklets` 0.10.1, `react-native-gesture-handler` 2.32
-- `@expo/ui`, `expo-glass-effect`, `expo-symbols`, `expo-image`, `expo-font`, `expo-splash-screen`
-- Starter screens: `src/app/index.tsx` (Home), `src/app/explore.tsx`, native tabs via `src/components/app-tabs.tsx`
-- Theming primitives: `ThemedText`, `ThemedView`, `src/constants/theme.ts`
-- Path aliases `@/*` → `src/*`, `@/assets/*` → `assets/*`
+- Phases 0–4 shipped (§11): EAS dev builds; SQLite schema + migrations (`src/lib/db/`); scanner capture → save/append flow (`useCapture` → `useSaveFlow` → `SaveScanDialog`); photo-library import (`expo-image-picker`); Library grid; document detail; single-document PDF export; multi-document N-up compose (`/compose?id=` or `?ids=`)
+- Custom UI layer per `plan/UI.md`: `FloatingTabBar` (Home / Scan centre pill / Library), `ScreenTitle`, `PaperThumb`, `LegibilityMeter`, `AppCard`/`AppButton` — plus a four-palette theme system with a light/dark/system appearance override, which went beyond the original UI spec
+- Pure layout engine + Vitest suite (`src/lib/layout/pack-columns.*`, `npm test`); `expo lint` clean
+- Path alias `@/*` → `src/*`
 - `experiments.typedRoutes: true`, `experiments.reactCompiler: true`
 
-**Absent — everything the product needs:** storage, database, scanner, OCR, PDF generation, drawing canvas, state management.
+**Absent — still to come:** OCR (Phase 5), annotation canvas (Phase 6), recipients/filename templates (Phase 7), store prep (Phase 8), and the un-built remainder of Phase 2's scope (reorder, tagging, search by title).
 
 ### Three observations about the existing setup
 
-**`reactCompiler: true` is on.** Do not hand-write `useMemo` / `useCallback` / `React.memo`; the compiler handles memoization and manual attempts tend to fight it. The exception is Reanimated worklets and Skia values, which live outside React's render model — those still need explicit `useSharedValue` / `useDerivedValue`.
+**`reactCompiler: true` is on.** Do not hand-write `useMemo` / `useCallback` / `React.memo`; the compiler handles memoization and manual attempts tend to fight it. The exception is Reanimated worklets and Skia values, which live outside React's render model — those still need explicit `useSharedValue` / `useDerivedValue`. (The `useFocusEffect(useCallback(...))` pairings in screens are the react-navigation idiom for effect dependencies, not memoization.)
 
-**Web is out — decided.** The scanner, OCR, and native file access do not exist on web, so a web build could never run the product. Remove it in Phase 0 rather than letting it rot:
+**Web is out — decided and done.** Removed in Phase 0 (commit `a707401`): the `web` script, `react-dom`/`react-native-web`, every `.web.tsx`/`.web.ts` variant, and `src/global.css` with its import from `theme.ts`. `app.json` platforms are `ios` + `android` only. Do not reintroduce any of it.
 
-- `app.json` — delete the `web` block
-- `package.json` — remove the `web` script; remove `react-dom` and `react-native-web`
-- Delete `src/components/app-tabs.web.tsx`, `src/components/animated-icon.web.tsx`, `src/components/animated-icon.module.css`, `src/components/web-badge.tsx`, `src/hooks/use-color-scheme.web.ts`
-- Delete `src/global.css` **and** remove its import from `src/constants/theme.ts` — that import exists only to feed CSS custom properties to the web `Fonts` variant, so simplify `Fonts` to the native `Platform.select` branches at the same time
-
-**Strip the starter template in the same pass.** `src/app/explore.tsx`, `src/components/hint-row.tsx`, `src/components/external-link.tsx`, `src/components/ui/collapsible.tsx` and the `animated-icon` set are demo scaffolding. Your own conventions say delete dead code rather than leave it; this is dead code the moment the real screens land, and it is cheapest to remove before anything starts importing it. Keep `ThemedText`, `ThemedView`, `src/constants/theme.ts`, and `src/hooks/use-theme.ts`.
+**Starter template — stripped** in the same Phase 0 pass (`explore.tsx`, `hint-row`, the `animated-icon` set, etc. are gone). `ThemedText`, `ThemedView`, `src/constants/theme.ts`, and `src/hooks/use-theme.ts` were kept, as planned.
 
 **`npm run reset-project` will wipe `src/app` into `app-example`.** Never run it.
 
@@ -114,7 +106,7 @@ The alternative — ejecting to bare React Native — is unnecessary. Expo confi
 | Package | Purpose |
 |---|---|
 | `pdf-lib` | PDF generation with full page-geometry control |
-| `zustand` | State. Small, no provider pyramid. Redux is overkill here. |
+| `zustand` | State. Small, no provider pyramid. Redux is overkill here. **Not installed as of 2026-09-16** — screen-local state + SQLite has covered everything so far; revisit when a screen genuinely needs a shared store. |
 
 **`react-native-get-random-values` is NOT needed** (verified 2026-09-14, pdf-lib 1.17.1): pdf-lib uses its own seeded `SimpleRNG` and never touches `crypto.getRandomValues`. The search text itself is drawn with raw content-stream operators (`BT … 3 Tr … Tf … Td <hex> Tj ET`) through `page.pushOperators`, with the font registered via `page.node.newFontDictionaryKey` — see `src/lib/spikes/invisible-text.ts`.
 
@@ -185,7 +177,7 @@ Surface this **live** as the user changes the column count. A slider that says "
 
 ### Options
 
-- **Captions** — `merchant · date · total` under each tile from `ReceiptData`. This is where OCR extraction pays off: a packed page becomes self-indexing.
+- **Captions** — `merchant · date · total` under each tile from `ReceiptData`. This is where OCR extraction pays off: a packed page becomes self-indexing. (Implemented 2026-09-16 as `title · pN` captions; the receipt-field form waits on Phase 5 OCR.)
 - **Separators** — hairline rule between tiles, on by default. Receipts on white paper blur together without one.
 - **Sort order** — date / merchant / total / manual. Date ascending is what an accountant wants.
 - **Running total** — optional per-page footer and a grand total on the last page. Small feature, disproportionately useful.
@@ -321,22 +313,21 @@ Two things worth calling out:
 
 Routes live under `src/app` (not the default `app/`), using `expo-router` with `typedRoutes` enabled. The root layout is a `Stack` wrapping the `(tabs)` group — non-tab routes (detail screens, spikes) push onto the root Stack; without that Stack wrapper, `router.push` to any non-tab route silently does nothing (learned the hard way, 2026-09-14).
 
+Current routes (updated 2026-09-16):
+
 ```
-src/app/(tabs)/library.tsx        Grid of documents; filter by kind, tag, date
-src/app/(tabs)/scan.tsx           Launch native scanner; multi-page capture
-src/app/(tabs)/settings.tsx       Defaults, recipients, page size, about
-
-src/app/document/[id]/index.tsx   Page thumbnails, reorder, rename, tag
-src/app/document/[id]/edit.tsx    Annotation canvas (Skia)
-src/app/document/[id]/export.tsx  Export options → PDF preview → share
-
-src/app/receipts/compose.tsx      Multi-select → N-up controls → live preview → export
-src/app/receipt/[id].tsx          Extracted fields, editable
+src/app/(tabs)/index.tsx          Home dashboard: Scan / Combine tiles, Recent row, status line
+src/app/(tabs)/library.tsx        Grid of documents; long-press or Combine to multi-select
+src/app/(tabs)/scan.tsx           Deep-link target only — runs capture on focus, backs out on cancel
+src/app/settings.tsx              Pushed: appearance, palette, capture settings (prefix, multi-page, quality)
+src/app/compose.tsx               N-up compose: `?id=<docId>` or `?ids=<id,id,...>`
+src/app/document/[id].tsx         Detail: page list, Export (one per page / Combine), rename, add pages, delete
+src/app/ocr-spike.tsx             Dev-only Phase 0 spike screen (graduates or leaves with Phase 5)
 ```
 
-The starter's `index.tsx` and `explore.tsx` get replaced. Keep `ThemedText` / `ThemedView` / `src/constants/theme.ts` — they are a reasonable base and already handle light/dark.
+Still-planned routes, unchanged: `document/[id]/edit.tsx` (annotation canvas, Phase 6) and `receipt/[id].tsx` (extracted-fields editor, Phase 5), pushing onto the same root Stack.
 
-`src/components/app-tabs.tsx` uses `expo-router/unstable-native-tabs`, which is the native-tab API rather than the classic `Tabs` component. Adjust the tab list there rather than introducing a second navigation pattern, and remember the `.web.tsx` sibling needs the same change if web stays in scope.
+`src/components/app-tabs.tsx` now uses the classic `Tabs` from `expo-router/js-tabs` rendered through the custom `FloatingTabBar` (`src/components/floating-tab-bar.tsx`) — the `NativeTabs` arrangement described in earlier drafts was replaced when the floating pill landed (plan/UI.md §3).
 
 **The compose screen is the heart of the app.** Give it a live page preview that re-renders as the column count changes — a thumbnail of the actual packed page, not an abstract diagram. That immediate feedback is what makes the feature feel considered rather than fiddly.
 
@@ -392,9 +383,9 @@ Each phase should end with something runnable on your phone.
 |---|---|---|
 | **0. Foundation** | `expo-dev-client` + EAS dev build on device; **`pdf-lib` invisible-text spike**; strip web + starter template (§2); bundle IDs + permission strings + `eas.json`; storage directory decision (§9); SQLite schema + migrations; zustand store | 4–5 days |
 | **1. Capture** | Scanner plugin integrated; scans saved to disk + DB; thumbnails | 2–3 days |
-| **2. Library** | Grid, document detail, rename/delete/reorder/tag, search by title | 3–4 days |
+| **2. Library** | Grid, document detail, rename/delete/reorder/tag, search by title | ◐ partially shipped 2026-09-14 — grid, detail, rename, delete, add-pages, and multi-select Combine are in; reorder/tagging/search-by-title remain unbuilt. Don't call Phase 2 done without them. | 3–4 days |
 | **3. PDF export (single)** | `pdf-lib` polyfills solved; one-page-per-scan export; share sheet | 3–5 days |
-| **4. N-up engine** | Column packing, legibility guard, modes, captions, separators, live preview, downscaling, unit tests | ✅ shipped 2026-09-15 (combine accessed via Export → Combine; auto-fit mode computed by `fitColumns`, surfacing an "Auto" chip is pending polish) | 5–7 days |
+| **4. N-up engine** | Column packing, legibility guard, modes, captions, separators, live preview, downscaling, unit tests | ✅ shipped 2026-09-15, polished 2026-09-16: Auto/2/3/4/6 column chips with `fitColumns` auto-fit; Library multi-select Combine (`/compose?ids=`) alongside Export → Combine; captions are `title · pN`. Per-tile downscale-before-embed still pending — stored 2000px JPEGs are currently embedded as-is. | 5–7 days |
 | **5. OCR** | Library spike, text layer, extraction heuristics, correction UI | 5–7 days |
 | **6. Annotation** | Skia canvas; text, highlight, redaction; normalized persist/restore; render into PDF | 5–7 days |
 | **7. Sharing polish** | Saved recipients, filename templates | 2 days |
@@ -426,6 +417,7 @@ Single-page PDF export moved *before* the N-up engine. The polyfill and image-em
 - ~~Web target~~ — decided: out (§2).
 - Page size default — Letter or A4 by locale? (Letter, US-based; make it a setting.)
 - Do receipts belong to a "batch"/expense-report entity, or is compose purely ad-hoc selection? ~~Ad-hoc is simpler for v1; batches are the obvious v2.~~ **Resolved 2026-09-15 by use:** combining lives inside Export on a document ("One per page" / "Combine") and packs *that document's pages* — no multi-select, no batch entity. Revisit only if users ask to mix documents in one pack.
+- **OTA updates vs. the privacy story** — `expo-updates` is wired in `app.json` (`updates.url`, `runtimeVersion.policy: appVersion`), so release builds phone Expo's servers to check for updates. No user data is sent, but it is still network traffic: either disable updates for v1 or cover them in the privacy policy and nutrition label. Decide before Phase 8.
 - Monetization — free, one-time paid, or free with a paid export tier? Decide before the store listing, not after.
 - Password-protected PDFs? `pdf-lib` supports encryption; a plausible paid-tier feature.
 
@@ -435,8 +427,8 @@ Single-page PDF export moved *before* the N-up engine. The polyfill and image-em
 
 1. ~~**Spike `pdf-lib`'s invisible text layer**~~ — **done, PASSED** (2026-09-14). `src/lib/spikes/invisible-text.ts` + `scripts/verify-invisible-text.mts` (Node) + `src/app/ocr-spike.tsx` (device, reachable from Home while Phase 0 lasts). Structural verification (decoded content stream contains `3 Tr` and the OCR word bytes) and behavioral verification (independent pdf-parse extraction) both pass; on-device the Node-only check reports "skipped" without failing the run. Searchable PDFs are de-risked.
 2. **Check the name and reserve it.** Search the App Store, Play Store, and USPTO TESS for "PaperStack". If it is clear, reserve it in App Store Connect immediately — app names are first-come, you can reserve one without a build, and discovering the name is taken after you have built branding around it is a bad week. You have been through trademark work with ICS360, so this will be familiar territory.
-3. **Set identity before the first EAS build.** `app.json` has no `ios.bundleIdentifier` or `android.package`, and both are permanent once published. Pick them now (e.g. `com.3dpdesignsandmore.paperstack`). Add `NSCameraUsageDescription` and `NSPhotoLibraryAddUsageDescription` at the same time — a missing usage string is an automatic App Store rejection, and it is cheaper to write once than to discover at submission.
-4. Strip web and the starter template (§2) — one clean commit before real code lands.
-5. Set up `expo-dev-client` and get an EAS development build onto your phone.
+3. ~~**Set identity before the first EAS build.**~~ **Done.** Both IDs are `com.tdpdesignsandmore.paperstack` — the `3dp` spelling is invalid on Android (package segments must start with a letter). `NSCameraUsageDescription` is set. `NSPhotoLibraryAddUsageDescription` was deliberately **not** added: nothing writes to the photo library directly (reads go through the system picker, saves through the share sheet), so the string would be dead weight. Revisit only if a feature ever writes to the library.
+4. ~~Strip web and the starter template (§2)~~ — done in Phase 0 (commit `a707401`).
+5. ~~Set up `expo-dev-client` and get an EAS development build onto your phone.~~ — done (dev builds in daily use; see `run.bat`).
 6. ~~Spike `react-native-document-scanner-plugin`~~ — **done, PASSED** (2026-09-14). Built under SDK 57 in the EAS dev build (commit `a4d35a7`), camera permission granted, ML Kit scanner UI launched, multi-page capture returned `scannedImages` file paths to JS. The plan's third-party-native risk is retired.
-7. Extend `CLAUDE.md` with the §1 decisions and the §4 dependency list, so Claude Code sessions start with this context.
+7. ~~Extend `CLAUDE.md` with the §1 decisions and the §4 dependency list~~ — done; `CLAUDE.md` now carries the architecture map, locked decisions, and constraints, and is kept current.

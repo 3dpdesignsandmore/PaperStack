@@ -7,7 +7,6 @@
  * Scan pill, Home's Scan tile, or the thin `/scan` deep-link route).
  */
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
 import { Alert } from 'react-native';
 
 import { type CaptureDialogState, useSaveFlow } from '@/hooks/use-save-flow';
@@ -25,19 +24,15 @@ export interface UseCaptureResult {
    * leave the caller where it was.
    */
   capture: () => Promise<string | null>;
-  /** True while the native scanner sheet is being launched. */
-  scanning: boolean;
   /** Props for the save-flow dialog; render `<SaveScanDialog {...dialog} />`. */
   dialog: CaptureDialogState;
 }
 
 export function useCapture(): UseCaptureResult {
   const db = useSQLiteContext();
-  const [scanning, setScanning] = useState(false);
   const { startSave, dialog } = useSaveFlow();
 
   async function capture(): Promise<string | null> {
-    setScanning(true);
     let pageUris: string[];
     try {
       const [quality, multiPage] = await Promise.all([
@@ -51,17 +46,15 @@ export function useCapture(): UseCaptureResult {
       });
       pageUris = result.pageUris;
     } catch (e: unknown) {
-      setScanning(false);
       const message = e instanceof Error ? e.message : String(e);
       Alert.alert('Scan failed', message);
       return null;
     }
-    setScanning(false);
     if (pageUris.length === 0) {
       return null; // user cancelled
     }
     return startSave(pageUris);
   }
 
-  return { capture, scanning, dialog };
+  return { capture, dialog };
 }

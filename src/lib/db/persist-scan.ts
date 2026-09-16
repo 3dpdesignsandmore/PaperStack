@@ -22,8 +22,29 @@ import type { DocumentKind, ScanDocument } from '@/lib/model';
 
 /** Long-edge pixel cap for stored scans (plan §9 storage budget). */
 export const MAX_LONG_EDGE_PX = 2000;
-/** JPEG quality for stored scans (plan §9 default). */
-export const JPEG_QUALITY = 0.8;
+
+/** Options for storing a scan session (new document or append). */
+export interface PersistOptions {
+  /**
+   * JPEG quality for stored pages, 0-100 — the same scale as the
+   * scanner's `croppedImageQuality` and the Settings quality control, so
+   * the value passes straight through. Defaults to
+   * {@link DEFAULT_QUALITY_PERCENT}.
+   */
+  qualityPercent?: number;
+}
+
+/** Stored-page JPEG quality when the setting is absent (plan §9's ~0.8). */
+export const DEFAULT_QUALITY_PERCENT = 80;
+
+/**
+ * Map the stored quality setting (`app_settings` string, `null` = unset)
+ * to {@link PersistOptions}, so the string-to-number conversion lives in
+ * one place for every persist call site.
+ */
+export function persistOptionsFromSetting(quality: string | null): PersistOptions {
+  return { qualityPercent: quality == null ? undefined : Number(quality) };
+}
 /** Directory under documents/ holding all scan files. */
 export const SCAN_DIR_NAME = 'scans';
 
@@ -52,7 +73,10 @@ export function scanRootDir(): Directory {
  * `MAX_LONG_EDGE_PX`, re-encoded as JPEG (plan §9). Returns the resulting
  * cache file plus its final pixel dimensions.
  */
-async function preparePage(sourceUri: string): Promise<{
+async function preparePage(
+  sourceUri: string,
+  qualityPercent: number,
+): Promise<{
   uri: string;
   widthPx: number;
   heightPx: number;
@@ -76,7 +100,9 @@ async function preparePage(sourceUri: string): Promise<{
   }
 
   const saved = await image.saveAsync({
-    compress: JPEG_QUALITY,
+    // `compress` is 0-1; the setting and the scanner plugin use 0-100 —
+    // convert once, here at the boundary.
+    compress: qualityPercent / 100,
     format: SaveFormat.JPEG,
   });
   return { uri: saved.uri, widthPx: saved.width, heightPx: saved.height };
@@ -96,6 +122,7 @@ export async function persistScanSession(
   pageUris: string[],
   title: string,
   kind: DocumentKind,
+  options: PersistOptions = {},
 ): Promise<ScanDocument> {
   const docId = generateId();
   const now = Date.now();
@@ -106,7 +133,10 @@ export async function persistScanSession(
   try {
     const pages: PersistedPage[] = [];
     for (let index = 0; index < pageUris.length; index++) {
-      const prepared = await preparePage(pageUris[index]);
+      const prepared = await preparePage(
+        pageUris[index],
+        options.qualityPercent ?? DEFAULT_QUALITY_PERCENT,
+      );
       const dest = new File(docDir, `page-${index}.jpg`);
       new File(prepared.uri).move(dest);
       pages.push({
@@ -159,6 +189,7 @@ export async function appendScanSession(
   db: SQLiteDatabase,
   pageUris: string[],
   documentId: string,
+  options: PersistOptions = {},
 ): Promise<void> {
   const existing = await db.getFirstAsync<{ maxIndex: number }>(
     'SELECT MAX(page_index) AS maxIndex FROM scan_pages WHERE document_id = ?',
@@ -173,7 +204,10 @@ export async function appendScanSession(
   try {
     for (let offset = 0; offset < pageUris.length; offset++) {
       const index = nextIndex + offset;
-      const prepared = await preparePage(pageUris[offset]);
+      const prepared = await preparePage(
+        pageUris[offset],
+        options.qualityPercent ?? DEFAULT_QUALITY_PERCENT,
+      );
       const dest = new File(docDir, `page-${index}.jpg`);
       new File(prepared.uri).move(dest);
       written.push(dest.uri);

@@ -22,8 +22,8 @@ import { ThemedView } from '@/components/themed-view';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
-import { appendScanSession, scanRootDir } from '@/lib/db/persist-scan';
-import { fetchDocument, fetchPages, renameDocument } from '@/lib/db/queries';
+import { appendScanSession, persistOptionsFromSetting, scanRootDir } from '@/lib/db/persist-scan';
+import { fetchDocument, fetchPages, getSetting, renameDocument, SCAN_MULTI_PAGE_KEY, SCAN_QUALITY_KEY } from '@/lib/db/queries';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import { scanPages } from '@/lib/scanner';
@@ -102,11 +102,20 @@ export default function DocumentDetailScreen() {
     }
     setAdding(true);
     try {
-      const { pageUris } = await scanPages();
+      // Same settings as the Scan flow: quality for the scanner's own
+      // JPEGs and for our re-encode, multi-page cap on Android.
+      const [quality, multiPage] = await Promise.all([
+        getSetting(db, SCAN_QUALITY_KEY),
+        getSetting(db, SCAN_MULTI_PAGE_KEY),
+      ]);
+      const { pageUris } = await scanPages({
+        croppedImageQuality: quality == null ? undefined : Number(quality),
+        maxNumDocuments: multiPage === 'false' ? 1 : undefined,
+      });
       if (pageUris.length === 0) {
         return;
       }
-      await appendScanSession(db, pageUris, id);
+      await appendScanSession(db, pageUris, id, persistOptionsFromSetting(quality));
       await load();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

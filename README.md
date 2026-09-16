@@ -1,56 +1,60 @@
-# Welcome to your Expo app 👋
+# PaperStack
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A mobile document and receipt scanner that produces clean, shareable PDFs — with
+multi-receipt **page packing**: receipts are tall and narrow, so PaperStack stacks
+them in columns, several to a page, instead of wasting one Letter page per receipt.
 
-## Get started
+**Capture → correct → compose → share.** Fully on-device: no account, no upload,
+nothing leaves your phone unless you share it.
 
-1. Install dependencies
+## Status
 
-   ```bash
-   npm install
-   ```
+Phases 0–4 of the plan are built — scanning, photo import, library, document
+detail, single-document PDF export, and the N-up compose screen with its live
+legibility guard. OCR and annotation are next; see `plan/PLAN.md` §11 for the
+build order and current phase status.
 
-2. Start the app
+## Running it
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+The scanner, SQLite, and PDF stack are all native — **Expo Go cannot run this
+app**. Development uses an Expo development build:
 
 ```bash
-npm run reset-project
+npm install
+npx expo start --dev-client   # run.bat on Windows does exactly this, pinned to port 8082
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Build the dev client once per native dependency change:
 
-### Other setup steps
+```bash
+npx expo install expo-dev-client
+eas build --profile development --platform android   # and --platform ios
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Validation
 
-## Learn more
+```bash
+npm run lint      # expo lint
+npm test          # vitest run — N-up layout engine unit tests
+npx tsc --noEmit  # manual typecheck; expected to pass clean
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Repo layout
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- `src/app/` — Expo Router file routes (Home / Scan / Library tabs, plus Compose,
+  Settings, and document detail)
+- `src/components/` — shared UI (floating tab bar, cards, buttons, thumbnails,
+  themed text/view primitives)
+- `src/lib/layout/` — the pure N-up column-packing engine and its unit tests
+- `src/lib/pdf/` — pdf-lib export paths (single document, stacked composition)
+- `src/lib/db/` — SQLite schema, migrations, queries, scan persistence
+- `plan/` — `PLAN.md` (technical plan) and `UI.md` (UI spec); read before
+  implementing, update when a decision changes (see `CLAUDE.md`)
 
-## Join the community
+## Notes
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- iOS + Android only; web is out — the scanner and OCR are native-only.
+- Scans live in the app's documents directory (iCloud-backed on iOS), never in
+  caches.
+- Documents are private until you share them; there is no telemetry. (Pre-release
+  store checklist lives in `plan/PLAN.md` §9 / Phase 8.)

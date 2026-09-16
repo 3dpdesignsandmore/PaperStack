@@ -15,7 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
 export interface ScreenTitleProps {
   /** Small uppercase label above the title, e.g. "Your scans". */
   eyebrow: string;
-  /** The screen's display-serif title. */
+  /** The screen's large bold title. */
   title: string;
   /** Optional detail line, e.g. "12 documents · 38.4 MB". */
   subtitle?: string;

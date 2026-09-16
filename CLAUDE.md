@@ -10,20 +10,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run start   # expo start — dev server, choose platform interactively
 npm run android # expo start --android
 npm run ios     # expo start --ios
-npm run web     # expo start --web
 npm run lint    # expo lint
+npm test        # vitest run — unit tests (N-up layout engine)
+run.bat         # expo start --dev-client --port 8082 (daily driver on Windows)
 ```
 
-There is no test suite configured yet. `npm run reset-project` (runs `scripts/reset-project.js`) wipes the starter template — moves `src/app` to `app-example` and creates a blank `app` — do not run it without being asked.
+`npm test` runs Vitest — `src/lib/layout/pack-columns.test.ts` unit-tests the pure N-up layout engine. `npm run reset-project` (runs `scripts/reset-project.js`) wipes the starter template — moves `src/app` to `app-example` and creates a blank `app` — do not run it without being asked.
 
 ## Architecture
 
-- **Routing**: Expo Router with file-based routing rooted at `src/app` (see `main: "expo-router/entry"` in `package.json`). `src/app/_layout.tsx` sets up the root `ThemeProvider` and renders `AnimatedSplashOverlay` + `AppTabs`. Screens are `src/app/index.tsx` (Home) and `src/app/explore.tsx`.
-- **Tab navigation**: `src/components/app-tabs.tsx` uses `expo-router/unstable-native-tabs` (`NativeTabs`) — this is the native-tab API, distinct from the classic `Tabs` component, and is styled from `Colors` in `src/constants/theme.ts`. There's a `.web.tsx` counterpart for web-specific tab rendering.
-- **Platform-specific files**: several modules ship both a default and a `.web.tsx`/`.web.ts` variant, resolved automatically by Metro/webpack based on platform (e.g. `animated-icon.tsx` / `animated-icon.web.tsx` / `animated-icon.module.css`, `app-tabs.tsx` / `app-tabs.web.tsx`, `use-color-scheme.ts` / `use-color-scheme.web.ts`). When editing one of these, check whether the sibling variant needs the same change.
-- **Theming**: `src/constants/theme.ts` defines `Colors` (light/dark), `Fonts` (per-platform via `Platform.select`), and spacing/layout constants (`Spacing`, `BottomTabInset`, `MaxContentWidth`). `src/hooks/use-theme.ts` resolves the active theme object from `useColorScheme()` (note: RN's color scheme can be `'unspecified'`, which is treated as `'light'`). `ThemedText` and `ThemedView` (in `src/components`) are the base styled primitives built on top of this rather than raw RN `Text`/`View`.
-- **Path aliases**: `@/*` → `src/*`, `@/assets/*` → `assets/*` (defined in `tsconfig.json`, extends `expo/tsconfig.base`, `strict: true`).
-- **Web CSS**: `src/global.css` is imported directly into `src/constants/theme.ts` for CSS custom properties (e.g. `--font-display`) used by the web `Fonts` variant.
+- **Routing**: Expo Router with file-based routing rooted at `src/app` (see `main: "expo-router/entry"` in `package.json`). The root `src/app/_layout.tsx` gates on font loading, wraps a `SQLiteProvider` (runs `migrate`) and the palette `ThemeProvider`, and renders a `Stack` — non-tab routes (Settings, Compose, document detail, the dev-only OCR spike) push onto that Stack. Tab screens live in `src/app/(tabs)/`: `index.tsx` (Home dashboard), `library.tsx` (Library grid), `scan.tsx` (deep-link target that launches the scanner on focus and backs out on cancel).
+- **Tab navigation**: `src/components/app-tabs.tsx` uses the classic `Tabs` from `expo-router/js-tabs` rendered through a custom `FloatingTabBar` (`src/components/floating-tab-bar.tsx`) — a hand-built floating pill, because `NativeTabs` wraps the platform tab bar and accepts no custom renderer. The centre Scan pill runs `useCapture()` directly instead of navigating; on success it pushes the new document. What the OS tab bar did implicitly is now the bar's own job (safe area, keyboard, a11y, hit targets); it exports `TAB_BAR_HEIGHT`/`TAB_BAR_GAP` for content padding.
+- **Capture & import flows**: `useCapture()` (scanner) and `useImportPhotos()` (photo library, `photo-picker.ts`) both hand page URIs to `useSaveFlow()`, which drives `SaveScanDialog` (name as a new document or append to an existing one). Each caller renders the dialog over its own screen.
+- **Theming**: `src/constants/theme.ts` defines four palettes keyed by `PaletteId`, each with light and dark `ThemeColors` sides, plus `Fonts` (Schibsted Grotesk static weights + IBM Plex Mono) and layout tokens (`Spacing`, `Radius`, `BottomTabInset`, `MaxContentWidth`, `CardShadow`). The palette + appearance preference lives in SQLite; `ThemeProvider` (`src/hooks/theme-provider.tsx`) reads it synchronously at mount so there is no first-frame flash, and `useTheme()` resolves the active `ThemeColors`. `ThemedText` and `ThemedView` (in `src/components`) are the base styled primitives built on top of this rather than raw RN `Text`/`View`.
+- **State**: screen-local React state plus SQLite — zustand was listed in the original plan but never needed.
+- **Path aliases**: `@/*` → `src/*` (defined in `tsconfig.json`, extends `expo/tsconfig.base`, `strict: true`).
 - **Typed routes**: `experiments.typedRoutes` and `experiments.reactCompiler` are enabled in `app.json` — route names and the React Compiler affect how screens can be authored/linked.
 
 ## Editor conventions
@@ -37,7 +38,7 @@ There is no test suite configured yet. `npm run reset-project` (runs `scripts/re
 - Don't run formatter write passes unless explicitly requested or needed to satisfy a check.
 - Delete unused/dead code instead of commenting it out; don't leave commented-out blocks or leftover debug lines.
 - After editing, verify with `git diff`/`git status` and let the user review the diff on their own timing.
-- Validation parity: `npm run lint` (`expo lint`) is the only CI-equivalent script defined in this repo — run that rather than an ad hoc lint invocation. There's no separate typecheck or test script yet; don't assume one exists.
+- Validation parity: `npm run lint` (`expo lint`) and `npm test` (Vitest) are the CI-equivalent scripts — run those rather than ad hoc invocations. There is still no dedicated typecheck script (`npx tsc --noEmit` is the manual check, and is expected to pass clean).
 - Not yet applicable, adopt if/when added: the centralized-logging rule (no logging utility exists here — this app doesn't call `console.error` today) and the API contract-discipline rules (no backend/API integration exists yet).
 
 ## TypeScript conventions
@@ -81,6 +82,7 @@ PaperStack scans documents and receipts, annotates them, and exports/shares them
 - **`expo-file-system` uses the new `File` / `Directory` class API** (SDK 54+). The old function-based API is `expo-file-system/legacy` — do not write new code against it. Most training data and tutorials predate this split.
 - **Scans and PDFs go in the documents directory**, never `Caches` or `tmp`. iOS backs the documents directory up to iCloud automatically, which is the app's entire backup story; `Caches` is excluded from backup and may be purged by the OS.
 - **Install Expo packages with `npx expo install`, never `npm install`**, so versions stay aligned with SDK 57.
+- **`expo-updates` is wired up in `app.json`** (`updates.url`, `runtimeVersion.policy: appVersion`) — the app phones Expo's servers to check for OTA JS updates. No user data is sent, but it is network traffic: the privacy policy and the "nothing leaves your device" store copy must account for it (or updates get disabled before release). Decide before Phase 8.
 - Check <https://docs.expo.dev/versions/v57.0.0/> before writing code against an Expo package — several APIs changed materially in SDK 54–57.
 
 ### Redaction is a security feature

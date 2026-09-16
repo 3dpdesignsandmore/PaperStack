@@ -11,6 +11,7 @@
  * selector with the §5 legibility verdict computed live, and Export →
  * stacked PDF + share sheet.
  */
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
@@ -230,6 +231,7 @@ export default function ComposeScreen() {
               {pages.map((page) => (
                 <PreviewTile
                   key={page.id}
+                  uri={page.thumbPath}
                   target={targetRect(page, firstPageItems, previewScale, previewHeight, previewWidth)}
                   color={theme.backgroundSelected}
                   borderColor={theme.border}
@@ -324,19 +326,22 @@ function targetRect(
 
 /** Props for {@link PreviewTile}. */
 interface PreviewTileProps {
+  /** Page image URI — the stored thumbnail (small; the preview is tiny). */
+  uri: string;
   target: TileTarget;
   color: string;
   borderColor: string;
 }
 
 /**
- * One stacked item's schematic rectangle in the preview sheet. Holds its
- * own shared values (plan/UI.md §4: "use useSharedValue / useDerivedValue
- * explicitly — the compiler does not manage worklet values") so a stable
- * key across column-count changes lets it spring to its new rect instead
- * of remounting.
+ * One stacked item in the preview sheet: the actual page image at its
+ * packed rect (plan/UI.md §4: "a thumbnail of the actual packed page, not
+ * an abstract diagram"). Holds its own shared values (same doc: "use
+ * useSharedValue / useDerivedValue explicitly — the compiler does not
+ * manage worklet values") so a stable key across column-count changes lets
+ * it spring to its new rect instead of remounting.
  */
-function PreviewTile({ target, color, borderColor }: PreviewTileProps) {
+function PreviewTile({ uri, target, color, borderColor }: PreviewTileProps) {
   const left = useSharedValue(target.left);
   const top = useSharedValue(target.top);
   const width = useSharedValue(target.width);
@@ -364,8 +369,13 @@ function PreviewTile({ target, color, borderColor }: PreviewTileProps) {
 
   return (
     <Animated.View
-      style={[animatedStyle, { backgroundColor: color, borderColor, borderWidth: 0.5 }]}
-    />
+      style={[
+        animatedStyle,
+        styles.tile,
+        { backgroundColor: color, borderColor, borderWidth: 0.5 },
+      ]}>
+      <Image source={{ uri }} style={styles.tileImage} contentFit="cover" recyclingKey={uri} />
+    </Animated.View>
   );
 }
 
@@ -421,6 +431,13 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: Radius.small,
     overflow: 'hidden',
+  },
+  tile: {
+    overflow: 'hidden',
+  },
+  tileImage: {
+    width: '100%',
+    height: '100%',
   },
   caption: {
     textAlign: 'center',

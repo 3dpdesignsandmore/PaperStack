@@ -1,39 +1,49 @@
 # PaperStack — UI implementation spec ("Blueprint")
 
-**Status** (updated 2026-09-15, not yet verified on a device — see §0):
-§1–§5 are implemented in the working tree. `screen-title.tsx`, `paper-thumb.tsx`,
-`legibility-meter.tsx` and `floating-tab-bar.tsx` all exist; Library moved to
-`(tabs)/library.tsx`, Home is the new `(tabs)/index.tsx`, Settings is a pushed
-route at `src/app/settings.tsx`; `app-tabs.tsx` uses the classic `Tabs` (from
-`expo-router/js-tabs` — the root `expo-router` export is deprecated) with
-`FloatingTabBar`. Compose has the animated US-Letter preview and `LegibilityMeter`.
-§3.4's optional Liquid Glass tab bar is also in.
+**Status** (updated 2026-09-16): §1–§5 are built — screen-list is as this spec
+describes, the floating tab bar with Liquid Glass fallback is in, and the spec's
+four known gaps have all since been closed:
 
-Known gaps, left out deliberately rather than guessed at:
-- **Import from photos** (§1, Library header) has no `expo-image-picker`
-  dependency yet — installing one is a new native module requiring an
-  EAS dev-client rebuild, which is a bigger step than a UI pass should take
-  unasked. The button is wired to a "Coming soon" alert instead of being dead.
-- **Read text (OCR)** in Settings is a static "Coming soon" row, not a working
-  switch — there's no OCR pipeline yet to back it (still ahead per CLAUDE.md's
-  locked decisions), and a toggle with nothing behind it would be worse than
-  none.
-- **Multi-document Combine is still broken** (pre-existing, not introduced by
-  this pass): Library's "Combine N into packed PDF" pushes `/compose?ids=...`,
-  but `compose.tsx` only ever reads a single `?id=` — composing more than one
-  document from Library selection mode doesn't work. `composeLayout`/
-  `buildPackedPdf` are also single-document by design (see `pdf/compose.ts`'s
-  header comment), so fixing this is a real feature, not a styling fix.
-- **AppButton's `style` prop lands on its outer shadow wrapper**, not the
-  Pressable that actually sizes itself — so per-instance `height` overrides
-  (Compose's export button spec'd at 54px) silently don't apply. Left as the
-  default AppButton height rather than reworking the shared component's
-  style-application contract mid-pass.
-- **§0's device verification (fonts, light mode) hasn't been re-run** — this
-  pass was done by reading the source tree, not on a simulator/device.
+- **Import from photos is real** (`expo-image-picker` + `useImportPhotos()` →
+  the same `SaveScanDialog`), with its permission strings in `app.json`.
+- **Multi-document Combine works**: Library's multi-select pushes
+  `/compose?ids=<id,...>` and both `compose.tsx` and `pdf/compose.ts` accept any
+  number of documents.
+- **The `Auto` column chip exists** (`fitColumns`), alongside 2 / 3 / 4 / 6.
+- **OCR remains a "Coming soon" Settings row** by design — no pipeline behind
+  it yet (Phase 5); a dead toggle would be worse than none.
 
-**Source of truth for the look:** the design canvas (PaperStack UI artifact).
-**Read with:** `PLAN.md` for product decisions, `CLAUDE.md` for code conventions.
+The theme system also grew past this spec: four palettes (Blueprint default,
+Paper, Graphite, Forest) with a Light/Dark/System appearance override, persisted
+in SQLite and read synchronously at mount. **Fonts changed after this doc was
+written**: the Instrument Serif display scheme was dropped for Schibsted Grotesk
+static weights + IBM Plex Mono (tabular figures). Where the body of this spec
+below mentions serif/display fonts, read the current Schibsted Grotesk type scale
+in `src/components/themed-text.tsx`.
+
+Remaining gaps (tracked here so they don't get lost):
+
+- **Compose's page preview shows schematic rectangles** (`PreviewTile`), not the
+  actual page images — PLAN.md §8 wants "a thumbnail of the actual packed page,
+  not an abstract diagram". The reflow animation, coordinate flip, and stable
+  keys are all correct; only tile content is a placeholder.
+- **Compose export embeds stored 2000px JPEGs as-is** — per-tile
+  downscale-before-embed (PLAN.md §5) is still pending.
+- **A4** is not yet a page-size option; only US Letter is wired.
+- **The photo-quality setting is partly defeated** by unconditional
+  persist-time recompression at JPEG 0.8 (`persist-scan.ts`) — being fixed
+  separately from this doc update.
+- **`fontError` still renders with fallback fonts** instead of surfacing the
+  failure (§0's original must-fix-first concern, still open in modified form).
+
+What this document now is: the **spec as written, kept as the contract for the
+components it defines** — the layouts, the component props, and the §3.3 tab-bar
+checklist still govern changes to those components. Where code and spec disagree,
+the code wins and the delta is recorded here, in this status block.
+
+**Design source:** the design canvas (PaperStack UI artifact).
+**Read with:** `PLAN.md` for product decisions, `CLAUDE.md` for code conventions and
+the current architecture map.
 
 What already exists in the repo: the Blueprint palette in `src/constants/theme.ts`,
 the type scale and `Fonts` wiring in `src/components/themed-text.tsx`, the font load
@@ -49,10 +59,17 @@ anywhere else, behavior is to be preserved exactly.
 
 ## 0. Verify before building
 
+> **Superseded 2026-09-16** — the `Fonts.serif` check below predates the font
+> switch and no longer applies. The current equivalent: open Library and
+> confirm the Schibsted Grotesk weights render (not system sans), and check
+> light mode in both the Blueprint palette and one warm palette (Paper). Kept
+> for history because the underlying concern — `fontError` is silently
+> swallowed in `_layout.tsx` — is still open.
+
 Two things are unconfirmed and both invalidate work done on top of them.
 
-**Fonts actually load.** Open the Library tab. The word "Library" is
-`ThemedText type="title"`, the only place `Fonts.serif` is used. If it renders as
+**Fonts actually load.** Open the Library tab. The word "Library"
+is `ThemedText type="title"`, the only place `Fonts.serif` is used. If it renders as
 a serif, fonts are working. If it renders as the system sans, `useFonts` is
 failing silently — `_layout.tsx` renders anyway when `fontError` is non-null — and
 that must be fixed first, because half this spec is typographic. Check by

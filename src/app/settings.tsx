@@ -12,7 +12,7 @@ import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
@@ -32,7 +32,6 @@ import {
     ThemeAppearance,
     type ThemeColors,
 } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemePreferences } from '@/hooks/theme-provider';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -88,13 +87,13 @@ const SECTIONS: SettingsSection[] = [
   {
     label: 'Defaults',
     title: 'Page size',
-    detail: 'US Letter (A4 option arrives with the N-up engine, Phase 4).',
+    detail: 'US Letter. An A4 option is planned but not built yet.',
   },
   {
     label: 'About',
     title: 'PaperStack',
     detail:
-      'PaperStack scans and stacks documents onto shared pages. Nothing leaves your device. Version 0.1.0 (development).',
+      'PaperStack scans and stacks documents onto shared pages. Nothing leaves your device. Version 1.0.0 (development).',
   },
 ];
 

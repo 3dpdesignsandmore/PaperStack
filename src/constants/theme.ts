@@ -285,16 +285,12 @@ export const Radius = {
  * per-weight files rather than a single variable font RN can reweight with
  * `fontWeight`, so each weight PaperStack actually uses gets its own key
  * instead of trying to derive it from `sans`/`mono` at render time.
- *
- * `rounded` is the exception: no rounded family is loaded, so it keeps the
- * iOS system design descriptor with an Android fallback, same as before.
  */
 export const Fonts = {
   sans: 'SchibstedGrotesk_400Regular',
   sansMedium: 'SchibstedGrotesk_500Medium',
   sansSemiBold: 'SchibstedGrotesk_600SemiBold',
   sansBold: 'SchibstedGrotesk_700Bold',
-  rounded: Platform.select({ ios: 'ui-rounded', default: 'normal' }) ?? 'normal',
   /** Tabular figures — currency amounts and other aligned numerals. */
   mono: 'IBMPlexMono_400Regular',
 } as const;

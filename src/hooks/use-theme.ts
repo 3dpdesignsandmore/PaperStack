@@ -10,9 +10,9 @@
  * this palette-aware one had to stay invisible to callers.
  */
 import { useContext } from 'react';
+import { useColorScheme } from 'react-native';
 
 import { Palettes, resolveScheme, type ThemeColors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemeContext } from '@/hooks/theme-provider';
 
 export function useTheme(): ThemeColors {

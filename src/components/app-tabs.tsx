@@ -3,14 +3,14 @@ import { Tabs } from 'expo-router/js-tabs';
 import { FloatingTabBar } from '@/components/floating-tab-bar';
 
 /**
- * Tabs become Home / Scan / Library (plan/UI.md §1, §3) — Settings moved
+ * Tabs are Home / Scan / Library (plan/UI.md §1, §3) — Settings moved
  * off the tab bar to a pushed route reached from Home's header. Route
  * names stay `index`/`scan`/`library`; renaming them changes URLs and
  * breaks `router.push` targets elsewhere.
  *
- * `NativeTabs` (`expo-router/unstable-native-tabs`) wraps the platform's
- * own tab bar and accepts no custom renderer, so the floating pill requires
- * the classic `Tabs` component instead, with `tabBar` overridden.
+ * A custom bar requires the classic `Tabs` component from
+ * `expo-router/js-tabs` with `tabBar` overridden — see
+ * `floating-tab-bar.tsx` for why.
  */
 export default function AppTabs() {
   return (

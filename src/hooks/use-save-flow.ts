@@ -13,8 +13,8 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { appendScanSession, persistScanSession } from '@/lib/db/persist-scan';
-import { fetchLibrary, getSetting, SCAN_NAME_PREFIX_KEY } from '@/lib/db/queries';
+import { appendScanSession, type PersistOptions, persistOptionsFromSetting, persistScanSession } from '@/lib/db/persist-scan';
+import { fetchLibrary, getSetting, SCAN_NAME_PREFIX_KEY, SCAN_QUALITY_KEY } from '@/lib/db/queries';
 import { DocumentKind, type LibraryEntry } from '@/lib/model';
 
 /** State + handlers for the save-flow dialog a caller renders. */
@@ -48,6 +48,11 @@ export function useSaveFlow(): UseSaveFlowResult {
   const [recentDocs, setRecentDocs] = useState<LibraryEntry[]>([]);
   const [saveName, setSaveName] = useState('');
   const resolveRef = useRef<((documentId: string | null) => void) | null>(null);
+  // Persist options for the pending session — read once in `startSave`
+  // (alongside the other settings), not re-read per save action; the save
+  // the user tapped should use the settings that existed when the dialog
+  // opened.
+  const persistOptionsRef = useRef<PersistOptions>({});
 
   function settle(documentId: string | null) {
     setPendingUris(null);
@@ -56,10 +61,12 @@ export function useSaveFlow(): UseSaveFlowResult {
   }
 
   async function startSave(pageUris: string[]): Promise<string | null> {
-    const [docs, prefix] = await Promise.all([
+    const [docs, prefix, quality] = await Promise.all([
       fetchLibrary(db),
       getSetting(db, SCAN_NAME_PREFIX_KEY),
+      getSetting(db, SCAN_QUALITY_KEY),
     ]);
+    persistOptionsRef.current = persistOptionsFromSetting(quality);
     setRecentDocs(docs);
     setSaveName(prefix ?? '');
     setPendingUris(pageUris);
@@ -78,8 +85,9 @@ export function useSaveFlow(): UseSaveFlowResult {
       return;
     }
     const uris = pendingUris;
+    const persistOptions = persistOptionsRef.current;
     try {
-      const doc = await persistScanSession(db, uris, title, DocumentKind.Document);
+      const doc = await persistScanSession(db, uris, title, DocumentKind.Document, persistOptions);
       settle(doc.id);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -93,8 +101,9 @@ export function useSaveFlow(): UseSaveFlowResult {
       return;
     }
     const uris = pendingUris;
+    const persistOptions = persistOptionsRef.current;
     try {
-      await appendScanSession(db, uris, target.id);
+      await appendScanSession(db, uris, target.id, persistOptions);
       settle(target.id);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
