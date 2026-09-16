@@ -9,9 +9,10 @@ nothing leaves your phone unless you share it.
 
 ## Status
 
-Phases 0–4 of the plan are built — scanning, photo import, library, document
-detail, single-document PDF export, and the N-up compose screen with its live
-legibility guard. OCR and annotation are next; see `plan/PLAN.md` §11 for the
+Phases 0–4 and 7 of the plan are built — scanning, photo import, library
+(reorder/tags/search), document detail, single-document PDF export, the N-up
+compose screen with its live legibility guard, plus filename templates and
+saved recipients. OCR and annotation are next; see `plan/PLAN.md` §11 for the
 build order and current phase status.
 
 ## Running it

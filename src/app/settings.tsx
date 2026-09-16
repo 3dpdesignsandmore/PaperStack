@@ -8,11 +8,11 @@
  * it.
  */
 import { useFocusEffect, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
+import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View, useColorScheme } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
@@ -22,6 +22,7 @@ import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
+    CardShadow,
     MaxContentWidth,
     PALETTE_NAMES,
     PaletteId,
@@ -32,15 +33,22 @@ import {
     ThemeAppearance,
     type ThemeColors,
 } from '@/constants/theme';
+import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useThemePreferences } from '@/hooks/theme-provider';
 import { useTheme } from '@/hooks/use-theme';
 import {
+    deleteRecipient,
+    fetchRecipients,
     getSetting,
+    saveRecipient,
     SCAN_MULTI_PAGE_KEY,
     SCAN_NAME_PREFIX_KEY,
     SCAN_QUALITY_KEY,
     setSetting,
+    type RecipientRow,
 } from '@/lib/db/queries';
+import { generateId } from '@/lib/db/persist-scan';
+import { FILENAME_TEMPLATE_KEY } from '@/lib/pdf/filename';
 
 /** Quality presets exposed in Settings, mapped to `croppedImageQuality`. */
 const QUALITY_LEVELS = [
@@ -80,11 +88,6 @@ const SECTIONS: SettingsSection[] = [
       "Scans are saved only on this device, in the app's documents folder. Backups happen through your device's normal backup.",
   },
   {
-    label: 'Coming soon',
-    title: 'Recipients',
-    detail: 'Saved share targets (Phase 7).',
-  },
-  {
     label: 'Defaults',
     title: 'Page size',
     detail: 'US Letter. An A4 option is planned but not built yet.',
@@ -113,18 +116,30 @@ export default function SettingsScreen() {
   const [editingPrefix, setEditingPrefix] = useState(false);
   const [multiPage, setMultiPage] = useState(true);
   const [quality, setQuality] = useState(DEFAULT_QUALITY);
+  // Filename template (Phase 7): null while loading, '' meaning
+  // "unset" (the placeholder shows the default).
+  const [template, setTemplate] = useState<string | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState(false);
+  // Saved recipients (Phase 7), most recently used first.
+  const [recipients, setRecipients] = useState<RecipientRow[]>([]);
+  const [addingRecipient, setAddingRecipient] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       (async () => {
-        const [storedPrefix, storedMultiPage, storedQuality] = await Promise.all([
-          getSetting(db, SCAN_NAME_PREFIX_KEY),
-          getSetting(db, SCAN_MULTI_PAGE_KEY),
-          getSetting(db, SCAN_QUALITY_KEY),
-        ]);
+        const [storedPrefix, storedMultiPage, storedQuality, storedTemplate, storedRecipients] =
+          await Promise.all([
+            getSetting(db, SCAN_NAME_PREFIX_KEY),
+            getSetting(db, SCAN_MULTI_PAGE_KEY),
+            getSetting(db, SCAN_QUALITY_KEY),
+            getSetting(db, FILENAME_TEMPLATE_KEY),
+            fetchRecipients(db),
+          ]);
         setPrefix(storedPrefix);
         setMultiPage(storedMultiPage !== 'false');
         setQuality(storedQuality == null ? DEFAULT_QUALITY : Number(storedQuality));
+        setTemplate(storedTemplate);
+        setRecipients(storedRecipients);
       })();
     }, [db]),
   );
@@ -143,6 +158,45 @@ export default function SettingsScreen() {
   async function chooseQuality(value: number) {
     setQuality(value);
     await setSetting(db, SCAN_QUALITY_KEY, String(value));
+  }
+
+  /* ---------------- Filename template (Phase 7) ---------------- */
+
+  async function saveTemplate(value: string) {
+    setEditingTemplate(false);
+    await setSetting(db, FILENAME_TEMPLATE_KEY, value);
+    setTemplate(value);
+  }
+
+  /* ---------------- Recipients (Phase 7) ---------------- */
+
+  async function onSaveRecipient(label: string, email: string) {
+    setAddingRecipient(false);
+    const trimmed = label.trim();
+    if (trimmed.length === 0) {
+      return;
+    }
+    await saveRecipient(db, {
+      id: generateId(),
+      label: trimmed,
+      email: email.trim().length > 0 ? email.trim() : null,
+      phone: null,
+    });
+    setRecipients(await fetchRecipients(db));
+  }
+
+  function onDeleteRecipient(recipient: RecipientRow) {
+    Alert.alert('Remove recipient', `Remove "${recipient.label}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteRecipient(db, recipient.id);
+          setRecipients(await fetchRecipients(db));
+        },
+      },
+    ]);
   }
 
   return (
@@ -236,6 +290,76 @@ export default function SettingsScreen() {
             </SettingsRow>
           </AppCard>
 
+          {/* Filename template (Phase 7) */}
+          <AppCard style={styles.card}>
+            <ThemedText type="label" style={[styles.cardLabel, { color: theme.textSecondary }]}>
+              Export file names
+            </ThemedText>
+            <SettingsRow last>
+              <View style={styles.rowText}>
+                <ThemedText type="defaultSemiBold">Filename template</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  {template == null || template.trim() === ''
+                    ? '{title} (default)'
+                    : template}
+                </ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  {'Tokens: {title} {date} {pages} {n} — e.g. "{title} {date}".'}
+                </ThemedText>
+              </View>
+              <AppButton label="Edit" variant="outline" onPress={() => setEditingTemplate(true)} />
+            </SettingsRow>
+          </AppCard>
+
+          {/* Recipients (Phase 7) */}
+          <AppCard style={styles.card}>
+            <ThemedText type="label" style={[styles.cardLabel, { color: theme.textSecondary }]}>
+              Sharing
+            </ThemedText>
+            {recipients.length === 0 ? (
+              <SettingsRow last>
+                <View style={styles.rowText}>
+                  <ThemedText type="defaultSemiBold">Saved recipients</ThemedText>
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    People you share with often, saved here so the OS share sheet is one tap shorter next time.
+                  </ThemedText>
+                </View>
+                <AppButton label="Add" variant="outline" onPress={() => setAddingRecipient(true)} />
+              </SettingsRow>
+            ) : (
+              <>
+                {recipients.map((recipient, index) => (
+                  <SettingsRow key={recipient.id} last={index === recipients.length - 1}>
+                    <View style={styles.rowText}>
+                      <ThemedText type="defaultSemiBold" numberOfLines={1}>
+                        {recipient.label}
+                      </ThemedText>
+                      {recipient.email != null && (
+                        <ThemedText type="small" style={{ color: theme.textSecondary }} numberOfLines={1}>
+                          {recipient.email}
+                        </ThemedText>
+                      )}
+                    </View>
+                    <Pressable
+                      onPress={() => onDeleteRecipient(recipient)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove recipient ${recipient.label}`}>
+                      <SymbolView
+                        name={{ ios: 'trash', android: 'delete' }}
+                        size={18}
+                        tintColor={theme.danger}
+                      />
+                    </Pressable>
+                  </SettingsRow>
+                ))}
+                <View style={styles.qualityRow}>
+                  <AppButton label="Add recipient" variant="outline" onPress={() => setAddingRecipient(true)} />
+                </View>
+              </>
+            )}
+          </AppCard>
+
           {SECTIONS.map((section) => (
             <AppCard key={section.title} style={styles.section}>
               <ThemedText type="label" style={{ color: theme.textSecondary }}>
@@ -278,7 +402,99 @@ export default function SettingsScreen() {
         onConfirm={savePrefix}
         onCancel={() => setEditingPrefix(false)}
       />
+
+      <PromptDialog
+        visible={editingTemplate}
+        title="Filename template"
+        message="Used for exported PDF file names. Tokens: {title} {date} {pages} {n}."
+        initialValue={template ?? ''}
+        placeholder="{title}"
+        confirmLabel="Save template"
+        onConfirm={saveTemplate}
+        onCancel={() => setEditingTemplate(false)}
+      />
+
+      <AddRecipientDialog
+        visible={addingRecipient}
+        onSave={(label, email) => void onSaveRecipient(label, email)}
+        onCancel={() => setAddingRecipient(false)}
+      />
     </ThemedView>
+  );
+}
+
+/** Props for {@link AddRecipientDialog}. */
+interface AddRecipientDialogProps {
+  visible: boolean;
+  onSave: (label: string, email: string) => void;
+  onCancel: () => void;
+}
+
+/**
+ * Two-field dialog for a new saved recipient: a label (required) and an
+ * optional email. `PromptDialog` is single-field, and recipients are the
+ * one place needing two — so this is its own small modal in the same
+ * visual language, not a second prompt stacked on the first.
+ */
+function AddRecipientDialog({ visible, onSave, onCancel }: AddRecipientDialogProps) {
+  const theme = useTheme();
+  const [label, setLabel] = useState('');
+  const [email, setEmail] = useState('');
+
+  useResetOnOpen(visible, () => {
+    setLabel('');
+    setEmail('');
+  });
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={styles.backdrop} onPress={onCancel}>
+        <Pressable
+          style={[styles.dialogCard, CardShadow(theme.shadow), { backgroundColor: theme.background }]}
+          onPress={(e) => e.stopPropagation()}>
+          <ThemedText type="subtitle">Add recipient</ThemedText>
+          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            A label for this share target, plus an optional email — the OS share sheet fills the address from it.
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.dialogInput,
+              { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
+            ]}
+            value={label}
+            onChangeText={setLabel}
+            placeholder="Label (e.g. Accountant)"
+            placeholderTextColor={theme.textSecondary}
+            autoFocus
+            autoCorrect={false}
+            underlineColorAndroid="transparent"
+            returnKeyType="next"
+          />
+          <TextInput
+            style={[
+              styles.dialogInput,
+              { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
+            ]}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email (optional)"
+            placeholderTextColor={theme.textSecondary}
+            keyboardType="email-address"
+            autoCorrect={false}
+            underlineColorAndroid="transparent"
+            returnKeyType="done"
+          />
+          <View style={styles.dialogActions}>
+            <AppButton label="Cancel" variant="outline" onPress={onCancel} />
+            <AppButton
+              label="Save"
+              disabled={label.trim().length === 0}
+              onPress={() => onSave(label, email)}
+            />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -471,5 +687,30 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: '#000000AA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+  },
+  dialogCard: {
+    borderRadius: Radius.large,
+    padding: Spacing.four,
+    width: '100%',
+    maxWidth: 420,
+    gap: Spacing.three,
+  },
+  dialogInput: {
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 16,
+  },
+  dialogActions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
   },
 });

@@ -43,7 +43,7 @@ Updated 2026-09-16 (originally written 2026-09-14 against the bare starter).
 - Path alias `@/*` → `src/*`
 - `experiments.typedRoutes: true`, `experiments.reactCompiler: true`
 
-**Absent — still to come:** OCR (Phase 5), annotation canvas (Phase 6), recipients/filename templates (Phase 7), store prep (Phase 8), and the un-built remainder of Phase 2's scope (reorder, tagging, search by title).
+**Absent — still to come:** OCR (Phase 5), annotation canvas (Phase 6), and store prep (Phase 8). `recipients.last_used_at` exists in schema v3 awaiting a share-flow integration the OS share sheet cannot provide on its own — a real one will likely need a share extension or explicit in-app send flow, not `Sharing.shareAsync`.
 
 ### Three observations about the existing setup
 
@@ -319,7 +319,7 @@ Current routes (updated 2026-09-16):
 src/app/(tabs)/index.tsx          Home dashboard: Scan / Combine tiles, Recent row, status line
 src/app/(tabs)/library.tsx        Grid of documents; long-press or Combine to multi-select
 src/app/(tabs)/scan.tsx           Deep-link target only — runs capture on focus, backs out on cancel
-src/app/settings.tsx              Pushed: appearance, palette, capture settings (prefix, multi-page, quality)
+src/app/settings.tsx              Pushed: appearance, palette, capture settings, filename template, recipients
 src/app/compose.tsx               N-up compose: `?id=<docId>` or `?ids=<id,id,...>`
 src/app/document/[id].tsx         Detail: page list, Export (one per page / Combine), rename, add pages, delete
 src/app/ocr-spike.tsx             Dev-only Phase 0 spike screen (graduates or leaves with Phase 5)
@@ -383,12 +383,12 @@ Each phase should end with something runnable on your phone.
 |---|---|---|
 | **0. Foundation** | `expo-dev-client` + EAS dev build on device; **`pdf-lib` invisible-text spike**; strip web + starter template (§2); bundle IDs + permission strings + `eas.json`; storage directory decision (§9); SQLite schema + migrations; zustand store | 4–5 days |
 | **1. Capture** | Scanner plugin integrated; scans saved to disk + DB; thumbnails | 2–3 days |
-| **2. Library** | Grid, document detail, rename/delete/reorder/tag, search by title | ◐ partially shipped 2026-09-14 — grid, detail, rename, delete, add-pages, and multi-select Combine are in; reorder/tagging/search-by-title remain unbuilt. Don't call Phase 2 done without them. | 3–4 days |
+| **2. Library** | Grid, document detail, rename/delete/reorder/tag, search by title | ✅ shipped 2026-09-16 — the remaining scope (page reorder with commit/cancel, tags with cascade delete of orphan tags, debounced title search) joins the earlier grid/detail/rename/delete/add-pages/Combine. | 3–4 days |
 | **3. PDF export (single)** | `pdf-lib` polyfills solved; one-page-per-scan export; share sheet | 3–5 days |
 | **4. N-up engine** | Column packing, legibility guard, modes, captions, separators, live preview, downscaling, unit tests | ✅ shipped 2026-09-15, polished 2026-09-16: Auto/2/3/4/6 column chips with `fitColumns` auto-fit; Library multi-select Combine (`/compose?ids=`) alongside Export → Combine; captions are `title · pN`. Per-tile downscale-before-embed still pending — stored 2000px JPEGs are currently embedded as-is. | 5–7 days |
 | **5. OCR** | Library spike, text layer, extraction heuristics, correction UI | 5–7 days |
 | **6. Annotation** | Skia canvas; text, highlight, redaction; normalized persist/restore; render into PDF | 5–7 days |
-| **7. Sharing polish** | Saved recipients, filename templates | 2 days |
+| **7. Sharing polish** | Saved recipients, filename templates | ✅ shipped 2026-09-16 — schema v3 `recipients` table with Settings CRUD (label + optional email; `last_used_at` reserved for future share-flow use, since the OS share sheet does not report the chosen target). Filename templates (`{title}` `{date}` `{pages}` `{n}`), unit-tested, applied on both export paths. | 2 days |
 | **8. Store prep** | Icon, splash, onboarding, privacy policy, screenshots, EAS submit | 4–6 days |
 
 **Two deliberate ordering choices, changed from the first draft:**

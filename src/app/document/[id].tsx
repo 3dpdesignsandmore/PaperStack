@@ -6,13 +6,14 @@
 import { Directory } from 'expo-file-system';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
 import { PromptDialog } from '@/components/prompt-dialog';
@@ -23,7 +24,19 @@ import { CardShadow, Radius, Spacing } from '@/constants/theme';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistOptionsFromSetting, scanRootDir } from '@/lib/db/persist-scan';
-import { fetchDocument, fetchPages, getSetting, renameDocument, SCAN_MULTI_PAGE_KEY, SCAN_QUALITY_KEY } from '@/lib/db/queries';
+import {
+  addTagToDocument,
+  fetchDocument,
+  fetchDocumentTags,
+  fetchPages,
+  getSetting,
+  removeTagFromDocument,
+  renameDocument,
+  reorderPages,
+  SCAN_MULTI_PAGE_KEY,
+  SCAN_QUALITY_KEY,
+  type TagRow,
+} from '@/lib/db/queries';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import { scanPages } from '@/lib/scanner';
@@ -44,15 +57,24 @@ export default function DocumentDetailScreen() {
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Reorder mode (Phase 2): the local order is mutated by move buttons and
+  // committed atomically via `reorderPages` on Done; cancel just drops it
+  // and `load()` restores the DB order.
+  const [reordering, setReordering] = useState(false);
+  const [draftOrder, setDraftOrder] = useState<ScanPage[]>([]);
+  // Tags on this document (Phase 2).
+  const [tags, setTags] = useState<TagRow[]>([]);
+  const [addingTag, setAddingTag] = useState(false);
 
   const load = useCallback(async () => {
     if (id == null) {
       setMissing(true);
       return;
     }
-    const [doc, docPages] = await Promise.all([
+    const [doc, docPages, docTags] = await Promise.all([
       fetchDocument(db, id),
       fetchPages(db, id),
+      fetchDocumentTags(db, id),
     ]);
     if (doc == null) {
       setMissing(true);
@@ -60,6 +82,7 @@ export default function DocumentDetailScreen() {
     }
     setDocument(doc);
     setPages(docPages);
+    setTags(docTags);
   }, [db, id]);
 
   useFocusEffect(
@@ -157,7 +180,7 @@ export default function DocumentDetailScreen() {
     }
     setExporting(true);
     try {
-      const result = await exportAndShareDocument(document, pages);
+      const result = await exportAndShareDocument(db, document, pages);
       Alert.alert(
         'Exported',
         `${result.pageCount} page(s) · ${Math.round(result.sizeBytes / 1024)} KB PDF.`,
@@ -197,11 +220,154 @@ export default function DocumentDetailScreen() {
     );
   }
 
+  /* ---------------- Reorder (Phase 2) ---------------- */
+
+  function enterReorder() {
+    if (pages == null) {
+      return;
+    }
+    setDraftOrder([...pages]);
+    setReordering(true);
+  }
+
+  function movePage(pageId: string, delta: -1 | 1) {
+    setDraftOrder((prev) => {
+      const index = prev.findIndex((page) => page.id === pageId);
+      const target = index + delta;
+      if (index < 0 || target < 0 || target >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return next;
+    });
+  }
+
+  async function commitReorder() {
+    if (id == null || pages == null) {
+      setReordering(false);
+      return;
+    }
+    setReordering(false);
+    // Only write when the order actually changed — a no-op commit would
+    // still bump `updated_at` and rewrite every row for nothing.
+    if (draftOrder.some((page, index) => pages[index]?.id !== page.id)) {
+      await reorderPages(db, id, draftOrder.map((page) => page.id));
+      await load();
+    }
+    setDraftOrder([]);
+  }
+
+  function cancelReorder() {
+    setReordering(false);
+    setDraftOrder([]);
+  }
+
+  /* ---------------- Tags (Phase 2) ---------------- */
+
+  async function onAddTag(name: string) {
+    if (id == null) {
+      return;
+    }
+    try {
+      await addTagToDocument(db, id, name);
+      setTags(await fetchDocumentTags(db, id));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Could not add tag', message);
+    }
+  }
+
+  async function onRemoveTag(tagId: string) {
+    if (id == null) {
+      return;
+    }
+    await removeTagFromDocument(db, id, tagId);
+    setTags(await fetchDocumentTags(db, id));
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView edges={['top']}>
         <ScreenHeader title={document.title} />
       </SafeAreaView>
+      {/* Tags row (Phase 2): chips plus add. Hidden while reordering —
+          reordering is about the pages, not the metadata. */}
+      {!reordering && (
+        <View style={styles.tagBar}>
+          {tags.map((tag) => (
+            <Pressable
+              key={tag.id}
+              onPress={() => void onRemoveTag(tag.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove tag ${tag.name}`}
+              style={[styles.tagChip, { backgroundColor: theme.backgroundSelected }]}>
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                {tag.name} ✕
+              </ThemedText>
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={() => setAddingTag(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add tag"
+            style={[styles.tagChip, styles.tagAddChip, { borderColor: theme.border }]}>
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              + Tag
+            </ThemedText>
+          </Pressable>
+        </View>
+      )}
+      {reordering ? (
+        <FlatList
+          data={draftOrder}
+          keyExtractor={(page) => page.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item, index }) => (
+            <AppCard style={styles.pageCard}>
+              <View style={styles.reorderRow}>
+                <Image
+                  source={{ uri: item.imagePath }}
+                  style={styles.reorderThumb}
+                  contentFit="cover"
+                  recyclingKey={item.id}
+                  transition={150}
+                />
+                <ThemedText type="small" style={styles.reorderLabel}>
+                  Page {index + 1} of {draftOrder.length}
+                </ThemedText>
+                <View style={styles.reorderButtons}>
+                  <Pressable
+                    onPress={() => movePage(item.id, -1)}
+                    disabled={index === 0}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move page ${index + 1} up`}>
+                    <SymbolView
+                      name={{ ios: 'arrow.up', android: 'arrow_upward' }}
+                      size={20}
+                      tintColor={index === 0 ? theme.border : theme.text}
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => movePage(item.id, 1)}
+                    disabled={index === draftOrder.length - 1}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move page ${index + 1} down`}>
+                    <SymbolView
+                      name={{ ios: 'arrow.down', android: 'arrow_downward' }}
+                      size={20}
+                      tintColor={index === draftOrder.length - 1 ? theme.border : theme.text}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+            </AppCard>
+          )}
+        />
+      ) : (
       <FlatList
         data={pages}
         keyExtractor={(page) => page.id}
@@ -221,36 +387,51 @@ export default function DocumentDetailScreen() {
           </AppCard>
         )}
       />
+      )}
 
       <SafeAreaView style={styles.actions} edges={['bottom']}>
-        <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow)]}>
-          <ActionBarItem
-            icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }}
-            label={exporting ? 'Exporting…' : 'Export'}
-            color={theme.accent}
-            onPress={onExport}
-            disabled={exporting}
-          />
-          <ActionBarItem
-            icon={{ ios: 'pencil', android: 'edit' }}
-            label="Rename"
-            color={theme.text}
-            onPress={() => setRenaming(true)}
-          />
-          <ActionBarItem
-            icon={{ ios: 'doc.badge.plus', android: 'note_add' }}
-            label={adding ? 'Adding…' : 'Add pages'}
-            color={theme.text}
-            onPress={onAddPages}
-            disabled={adding}
-          />
-          <ActionBarItem
-            icon={{ ios: 'trash', android: 'delete' }}
-            label="Delete"
-            color={theme.danger}
-            onPress={onDelete}
-          />
-        </ThemedView>
+        {reordering ? (
+          <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow)]}>
+            <AppButton label="Done" onPress={() => void commitReorder()} style={styles.reorderDone} />
+            <AppButton label="Cancel" variant="outline" onPress={cancelReorder} style={styles.reorderDone} />
+          </ThemedView>
+        ) : (
+          <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow)]}>
+            <ActionBarItem
+              icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }}
+              label={exporting ? 'Exporting…' : 'Export'}
+              color={theme.accent}
+              onPress={onExport}
+              disabled={exporting}
+            />
+            <ActionBarItem
+              icon={{ ios: 'pencil', android: 'edit' }}
+              label="Rename"
+              color={theme.text}
+              onPress={() => setRenaming(true)}
+            />
+            <ActionBarItem
+              icon={{ ios: 'arrow.up.arrow.down', android: 'swap_vert' }}
+              label="Reorder"
+              color={theme.text}
+              onPress={enterReorder}
+              disabled={(pages?.length ?? 0) < 2}
+            />
+            <ActionBarItem
+              icon={{ ios: 'doc.badge.plus', android: 'note_add' }}
+              label={adding ? 'Adding…' : 'Add pages'}
+              color={theme.text}
+              onPress={onAddPages}
+              disabled={adding}
+            />
+            <ActionBarItem
+              icon={{ ios: 'trash', android: 'delete' }}
+              label="Delete"
+              color={theme.danger}
+              onPress={onDelete}
+            />
+          </ThemedView>
+        )}
       </SafeAreaView>
 
       <PromptDialog
@@ -264,6 +445,19 @@ export default function DocumentDetailScreen() {
           await load();
         }}
         onCancel={() => setRenaming(false)}
+      />
+
+      <PromptDialog
+        visible={addingTag}
+        title="Add tag"
+        message="A short label for this document, e.g. Taxes 2026."
+        placeholder="Tag name"
+        confirmLabel="Add"
+        onConfirm={(name) => {
+          setAddingTag(false);
+          void onAddTag(name);
+        }}
+        onCancel={() => setAddingTag(false)}
       />
     </ThemedView>
   );
@@ -326,6 +520,43 @@ const styles = StyleSheet.create({
   listContent: {
     padding: Spacing.three,
     gap: Spacing.three,
+  },
+  tagBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  tagChip: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 4,
+  },
+  tagAddChip: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  reorderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  reorderThumb: {
+    width: 56,
+    height: 72,
+    borderRadius: Radius.small,
+    backgroundColor: '#80808040',
+  },
+  reorderLabel: {
+    flex: 1,
+  },
+  reorderButtons: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+  },
+  reorderDone: {
+    flex: 1,
   },
   pageCard: {
     padding: Spacing.two,

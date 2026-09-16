@@ -44,4 +44,6 @@ export interface LibraryEntry {
   updatedAt: number;
   pageCount: number;
   firstThumbPath: string | null;
+  /** Tag names, alphabetical. May be empty; never null. */
+  tags: string[];
 }

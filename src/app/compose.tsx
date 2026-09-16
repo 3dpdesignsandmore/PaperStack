@@ -138,10 +138,10 @@ export default function ComposeScreen() {
     setExporting(true);
     try {
       const result = await exportAndShareComposition(
+        db,
         documents,
         pages,
         { columns, separators, captions },
-        title,
       );
       Alert.alert(
         'Exported',

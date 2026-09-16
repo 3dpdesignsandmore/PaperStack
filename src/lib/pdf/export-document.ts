@@ -13,9 +13,12 @@
  */
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { PDFDocument } from 'pdf-lib';
 
+import { getSetting } from '@/lib/db/queries';
 import type { ScanDocument, ScanPage } from '@/lib/model';
+import { FILENAME_TEMPLATE_KEY, resolveExportFilename } from '@/lib/pdf/filename';
 
 /** US Letter, in points (plan §5). */
 const PAGE_PTS = { width: 612, height: 792 };
@@ -84,11 +87,13 @@ export async function buildDocumentPdf(
 }
 
 /**
- * Export a document as a PDF and share it. Re-exports of the same
- * document overwrite the same file (no accumulation), matching one
- * stable artifact per document title.
+ * Export a document as a PDF and share it. The file name expands through
+ * the user's filename template (Phase 7), so with `{date}` in it the
+ * same document re-exported on different days lands under different
+ * names — that is the template's point, not an accumulation bug.
  */
 export async function exportAndShareDocument(
+  db: SQLiteDatabase,
   doc: ScanDocument,
   pages: ScanPage[],
 ): Promise<ExportedPdf> {
@@ -98,11 +103,20 @@ export async function exportAndShareDocument(
 
   const bytes = await buildDocumentPdf(doc, pages);
 
+  const template = await getSetting(db, FILENAME_TEMPLATE_KEY);
+  const fileName = resolveExportFilename(
+    template,
+    doc.title,
+    pages.length,
+    pages.length,
+    sanitizeTitle,
+  );
+
   const dir = exportDir();
   if (!dir.exists) {
     dir.create({ intermediates: true, idempotent: true });
   }
-  const file = new File(dir, `${sanitizeTitle(doc.title)}.pdf`);
+  const file = new File(dir, `${fileName}.pdf`);
   if (file.exists) {
     file.delete();
   }

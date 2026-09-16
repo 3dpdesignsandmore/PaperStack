@@ -10,7 +10,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 /** Current schema version. Increment when adding a migration step. */
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 /** Database file name, opened relative to the default SQLite directory. */
 export const DATABASE_NAME = 'paperstack.db';
@@ -71,7 +71,38 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
     current = 2;
   }
 
-  // Future migrations: `if (current === 2) { ... current = 3; }`
+  if (current === 2) {
+    // v3 (Phase 2): document tags — many-to-many through document_tags.
+    // Plus (Phase 7) saved share recipients: label + optional email/phone,
+    // ordered by last use. Both in one migration so there is one schema
+    // version to reason about for a release, not two shipped a day apart.
+    await db.execAsync(`
+      CREATE TABLE tags (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE
+      );
+
+      CREATE TABLE document_tags (
+        document_id TEXT NOT NULL REFERENCES scan_documents(id) ON DELETE CASCADE,
+        tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (document_id, tag_id)
+      );
+
+      CREATE INDEX idx_document_tags_document ON document_tags (document_id);
+      CREATE INDEX idx_document_tags_tag ON document_tags (tag_id);
+
+      CREATE TABLE recipients (
+        id TEXT PRIMARY KEY NOT NULL,
+        label TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        last_used_at INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    current = 3;
+  }
+
+  // Future migrations: `if (current === 3) { ... current = 4; }`
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

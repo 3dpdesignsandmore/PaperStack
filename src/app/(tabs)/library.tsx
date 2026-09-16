@@ -7,7 +7,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -18,7 +18,7 @@ import { SaveScanDialog } from '@/components/save-scan-dialog';
 import { ScreenTitle } from '@/components/screen-title';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useImportPhotos } from '@/hooks/use-import-photos';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
@@ -43,6 +43,10 @@ export default function LibraryScreen() {
   const composeBarBottom = insets.bottom + TAB_BAR_GAP + TAB_BAR_HEIGHT + Spacing.two;
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Search-as-you-type (Phase 2): the term is state; `load` folds it into
+  // the query. Debounced below so a fast typist fires one query per pause,
+  // not per keystroke.
+  const [search, setSearch] = useState('');
   // Seeded from the param, not just `false` — expo-router's tab screens
   // mount lazily, so the very first visit to Library from Home's "Combine
   // documents" tile IS the initial mount, with `select=combine` already
@@ -53,8 +57,8 @@ export default function LibraryScreen() {
   const { importPhotos, dialog: importDialog } = useImportPhotos();
 
   const load = useCallback(async () => {
-    setEntries(await fetchLibrary(db));
-  }, [db]);
+    setEntries(await fetchLibrary(db, search));
+  }, [db, search]);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,6 +87,23 @@ export default function LibraryScreen() {
       router.setParams({ select: undefined });
     }
   }, [params.select, router]);
+
+  // Debounced re-query while the term changes (Phase 2). The focus effect
+  // above covers focus/param changes; this covers typing. Clearing runs
+  // immediately; typing waits 250ms for a pause.
+  useEffect(() => {
+    if (search === '') {
+      return; // focus effect and stale-timer cleanup handle the empty term
+    }
+    const timer = setTimeout(() => {
+      load();
+    }, 250);
+    return () => clearTimeout(timer);
+    // `load` intentionally excluded: it already changes identity with
+    // `search` (its dependency), which is the only trigger this timer
+    // wants; focus-effect recreation would otherwise restart it needlessly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   function enterSelection(seedId?: string) {
     setSelecting(true);
@@ -150,15 +171,63 @@ export default function LibraryScreen() {
           }
         />
 
+        {/* Search (Phase 2) — under the header, above the grid. Hidden
+            while selecting; combining wants the full list visible. */}
+        {!selecting && (entries == null || search.length > 0 || (entries != null && entries.length > 0)) && (
+          <View style={styles.searchRow}>
+            <SymbolView
+              name={{ ios: 'magnifyingglass', android: 'search' }}
+              size={16}
+              tintColor={theme.textSecondary}
+            />
+            <TextInput
+              style={[
+                styles.searchInput,
+                { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.border },
+              ]}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search by title"
+              placeholderTextColor={theme.textSecondary}
+              returnKeyType="search"
+              autoCorrect={false}
+              underlineColorAndroid="transparent"
+              accessibilityLabel="Search documents by title"
+            />
+            {search.length > 0 && (
+              <Pressable
+                onPress={() => setSearch('')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search">
+                <SymbolView
+                  name={{ ios: 'xmark.circle.fill', android: 'cancel' }}
+                  size={16}
+                  tintColor={theme.textSecondary}
+                />
+              </Pressable>
+            )}
+          </View>
+        )}
+
         {entries == null ? (
           <ActivityIndicator style={styles.center} size="large" />
         ) : entries.length === 0 ? (
-          <ThemedView style={styles.emptyState}>
-            <ThemedText type="subtitle">No documents yet</ThemedText>
-            <ThemedText type="small" style={[styles.emptyHint, { color: theme.textSecondary }]}>
-              Scan your first document. Everything stays on this device.
-            </ThemedText>
-          </ThemedView>
+          search.trim().length > 0 ? (
+            <ThemedView style={styles.emptyState}>
+              <ThemedText type="subtitle">No matches</ThemedText>
+              <ThemedText type="small" style={[styles.emptyHint, { color: theme.textSecondary }]}>
+                {`Nothing is titled "${search.trim()}".`}
+              </ThemedText>
+            </ThemedView>
+          ) : (
+            <ThemedView style={styles.emptyState}>
+              <ThemedText type="subtitle">No documents yet</ThemedText>
+              <ThemedText type="small" style={[styles.emptyHint, { color: theme.textSecondary }]}>
+                Scan your first document. Everything stays on this device.
+              </ThemedText>
+            </ThemedView>
+          )
         ) : (
           <FlatList
             data={entries}
@@ -278,6 +347,22 @@ function LibraryCell({ item, selecting, selected, onPress, onLongPress }: Librar
           {formatDate(item.createdAt)} · {item.pageCount} page{item.pageCount === 1 ? '' : 's'}
         </ThemedText>
       </ThemedView>
+      {item.tags.length > 0 && (
+        <View style={styles.tagRow}>
+          {item.tags.slice(0, 3).map((tag) => (
+            <View key={tag} style={[styles.tagChip, { backgroundColor: theme.backgroundSelected }]}>
+              <ThemedText type="small" style={{ color: theme.textSecondary }} numberOfLines={1}>
+                {tag}
+              </ThemedText>
+            </View>
+          ))}
+          {item.tags.length > 3 && (
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              +{item.tags.length - 3}
+            </ThemedText>
+          )}
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -304,6 +389,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    marginBottom: Spacing.two,
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+    fontSize: 15,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
+  tagChip: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
   },
   iconButton: {
     width: 36,

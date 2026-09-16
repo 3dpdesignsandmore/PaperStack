@@ -13,8 +13,10 @@
  */
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
+import { getSetting } from '@/lib/db/queries';
 import {
     LETTER,
     packColumns,
@@ -24,6 +26,7 @@ import {
 } from '@/lib/layout/pack-columns';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import { sanitizeTitle } from '@/lib/pdf/export-document';
+import { FILENAME_TEMPLATE_KEY, resolveExportFilename } from '@/lib/pdf/filename';
 
 /** Options for building a stacked composition PDF. */
 export interface ComposeOptions {
@@ -188,25 +191,31 @@ export async function buildStackedPdf(
 /**
  * Export and share the stacked composition for a set of documents' pages
  * (one document, or several combined). Sequential by design (write then
- * share); writes into documents/exports/compositions/.
+ * share); writes into documents/exports/compositions/. The file name
+ * expands through the user's filename template (Phase 7) — for a
+ * composition `{n}` is the sheet count, not the page count.
  */
 export async function exportAndShareComposition(
+  db: SQLiteDatabase,
   documents: ScanDocument[],
   pages: ScanPage[],
   options: ComposeOptions,
-  fileName: string,
 ): Promise<{ uri: string; sizeBytes: number; pageCount: number }> {
   if (pages.length === 0) {
     throw new Error('Cannot stack a selection with no pages');
   }
 
   const bytes = await buildStackedPdf(documents, pages, options);
+  const title = combinedTitle(documents);
+  const sheetCount = composeLayout(pages, options.columns, options.captions).pages.length;
+  const template = await getSetting(db, FILENAME_TEMPLATE_KEY);
+  const fileName = resolveExportFilename(template, title, pages.length, sheetCount, sanitizeTitle);
 
   const dir = new Directory(Paths.document, 'exports', 'compositions');
   if (!dir.exists) {
     dir.create({ intermediates: true, idempotent: true });
   }
-  const file = new File(dir, `${sanitizeTitle(fileName)}.pdf`);
+  const file = new File(dir, `${fileName}.pdf`);
   if (file.exists) {
     file.delete();
   }
@@ -224,6 +233,6 @@ export async function exportAndShareComposition(
   return {
     uri: file.uri,
     sizeBytes: file.size,
-    pageCount: composeLayout(pages, options.columns, options.captions).pages.length,
+    pageCount: sheetCount,
   };
 }
