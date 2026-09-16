@@ -8,17 +8,17 @@
  * Rendered by the export screens over their own UI; owns no data beyond
  * the recipient list it loads when opened.
  */
-import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+    View,
 } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
@@ -28,11 +28,11 @@ import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchRecipients, type RecipientRow } from '@/lib/db/queries';
 import {
-  RecipientChannel,
-  channelsOf,
-  mergeRecipient,
-  recordRecipientUse,
-  sendToRecipient,
+    RecipientChannel,
+    channelsOf,
+    mergeRecipient,
+    recordRecipientUse,
+    sendToRecipient,
 } from '@/lib/recipients';
 
 /** Props for {@link SendSheet}. */

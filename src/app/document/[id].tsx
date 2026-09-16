@@ -18,6 +18,7 @@ import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ScreenHeader } from '@/components/screen-header';
+import { SendSheet } from '@/components/send-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
@@ -37,10 +38,9 @@ import {
   SCAN_QUALITY_KEY,
   type TagRow,
 } from '@/lib/db/queries';
-import type { ScanDocument, ScanPage } from '@/lib/model';
-import { SendSheet } from '@/components/send-sheet';
-import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import { logInfo, logThrown } from '@/lib/debug-log';
+import type { ScanDocument, ScanPage } from '@/lib/model';
+import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import { scanPages } from '@/lib/scanner';
 
 export default function DocumentDetailScreen() {

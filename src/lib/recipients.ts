@@ -24,9 +24,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { generateId } from '@/lib/db/persist-scan';
 import { touchRecipient, type RecipientRow } from '@/lib/db/queries';
-import { upsertRecipientByChannel, RecipientChannel } from '@/lib/recipient-merge';
+import { RecipientChannel, upsertRecipientByChannel } from '@/lib/recipient-merge';
 
-export { RecipientChannel, channelsOf } from '@/lib/recipient-merge';
+export { channelsOf, RecipientChannel } from '@/lib/recipient-merge';
 
 /**
  * The app-facing merge with the real id generator bound in (the pure

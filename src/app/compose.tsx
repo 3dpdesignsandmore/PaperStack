@@ -30,8 +30,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { logInfo, logThrown } from '@/lib/debug-log';
 import { fetchDocument, fetchPages } from '@/lib/db/queries';
+import { logInfo, logThrown } from '@/lib/debug-log';
 import { fitColumns, LETTER, type PlacedItem } from '@/lib/layout/pack-columns';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import {

@@ -5,13 +5,13 @@
  * (pure: no react-native import, so Vitest can run it); only
  * `fetchRecipients`/`saveRecipient` are mocked.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchRecipients, saveRecipient, type RecipientRow } from '@/lib/db/queries';
 import {
-  RecipientChannel,
-  channelsOf,
-  upsertRecipientByChannel,
+    RecipientChannel,
+    channelsOf,
+    upsertRecipientByChannel,
 } from './recipient-merge';
 
 vi.mock('@/lib/db/queries', () => ({

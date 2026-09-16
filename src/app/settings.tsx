@@ -36,6 +36,8 @@ import {
 import { useThemePreferences } from '@/hooks/theme-provider';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
+import { createAndShareBackup } from '@/lib/backup';
+import { DATABASE_NAME } from '@/lib/db/migrations';
 import { generateId } from '@/lib/db/persist-scan';
 import {
     deleteRecipient,
@@ -48,8 +50,6 @@ import {
     setSetting,
     type RecipientRow,
 } from '@/lib/db/queries';
-import { DATABASE_NAME } from '@/lib/db/migrations';
-import { createAndShareBackup } from '@/lib/backup';
 import { exportAndShareLog, logInfo, logThrown } from '@/lib/debug-log';
 import { FILENAME_TEMPLATE_KEY } from '@/lib/pdf/filename';
 
