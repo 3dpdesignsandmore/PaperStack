@@ -27,8 +27,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { scanRootDir } from '@/lib/db/persist-scan';
 import { fetchLibrary } from '@/lib/db/queries';
 import { logThrown } from '@/lib/debug-log';
-import { Directory } from 'expo-file-system';
 import type { LibraryEntry } from '@/lib/model';
+import { Directory } from 'expo-file-system';
 
 /** Columns in the library grid. */
 const NUM_COLUMNS = 2;
