@@ -157,6 +157,14 @@ export function useSaveFlow(): UseSaveFlowResult {
     try {
       await appendScanSession(db, uris, target.id, persistOptions);
       settle(target.id);
+      // The settle above lands the caller on the target document, new
+      // pages at the bottom — say it out loud too, so the save outcome
+      // is confirmed rather than inferred (same feedback shape as the
+      // split-save alert below).
+      Alert.alert(
+        'Added to document',
+        `Added ${uris.length} page${uris.length === 1 ? '' : 's'} to "${target.title}".`,
+      );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       Alert.alert('Save failed', message);

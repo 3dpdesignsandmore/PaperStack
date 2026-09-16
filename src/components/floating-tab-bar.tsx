@@ -63,10 +63,6 @@ export function FloatingTabBar({ state, descriptors, navigation, insets }: Botto
     };
   }, []);
 
-  if (keyboardVisible) {
-    return null;
-  }
-
   async function onScanPress(routeKey: string) {
     const event = navigation.emit({ type: 'tabPress', target: routeKey, canPreventDefault: true });
     if (event.defaultPrevented) {
@@ -124,17 +120,24 @@ export function FloatingTabBar({ state, descriptors, navigation, insets }: Botto
 
   return (
     <>
-      {useGlass ? (
-        <GlassView glassEffectStyle="regular" style={[styles.bar, barPosition]}>
-          {items}
-        </GlassView>
-      ) : (
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.bar, CardShadow(theme.shadow), styles.barShadowBoost, barPosition]}>
-          {items}
-        </ThemedView>
-      )}
+      {/* §3.3.3: hide the pill while the keyboard is up — but ONLY the
+          bar. The scan dialog must stay mounted no matter what: this is
+          the dialog the Scan pill's own flow renders into, and unmounting
+          a visible-with-text-input dialog on keyboard-show destroys the
+          focused field mid-keystroke (the keyboard "flashes open then
+          closed" loop, fixed 2026-09-16). */}
+      {!keyboardVisible &&
+        (useGlass ? (
+          <GlassView glassEffectStyle="regular" style={[styles.bar, barPosition]}>
+            {items}
+          </GlassView>
+        ) : (
+          <ThemedView
+            type="backgroundElement"
+            style={[styles.bar, CardShadow(theme.shadow), styles.barShadowBoost, barPosition]}>
+            {items}
+          </ThemedView>
+        ))}
       <SaveScanDialog {...dialog} />
     </>
   );
