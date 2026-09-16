@@ -8,8 +8,8 @@
 import { Directory, Paths } from 'expo-file-system';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -24,10 +24,10 @@ import { BottomTabInset, glowShadow, MaxContentWidth, Radius, Spacing } from '@/
 import { useCapture } from '@/hooks/use-capture';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
-import { logThrown } from '@/lib/debug-log';
-import { fetchLibrary } from '@/lib/db/queries';
-import type { LibraryEntry } from '@/lib/model';
 import { SCAN_DIR_NAME } from '@/lib/db/persist-scan';
+import { fetchLibrary } from '@/lib/db/queries';
+import { logThrown } from '@/lib/debug-log';
+import type { LibraryEntry } from '@/lib/model';
 
 /** How many of the newest documents show in the Recent row. */
 const RECENT_COUNT = 5;

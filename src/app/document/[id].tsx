@@ -26,17 +26,17 @@ import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistOptionsFromSetting, scanRootDir } from '@/lib/db/persist-scan';
 import {
-  addTagToDocument,
-  fetchDocument,
-  fetchDocumentTags,
-  fetchPages,
-  getSetting,
-  removeTagFromDocument,
-  renameDocument,
-  reorderPages,
-  SCAN_MULTI_PAGE_KEY,
-  SCAN_QUALITY_KEY,
-  type TagRow,
+    addTagToDocument,
+    fetchDocument,
+    fetchDocumentTags,
+    fetchPages,
+    getSetting,
+    removeTagFromDocument,
+    renameDocument,
+    reorderPages,
+    SCAN_MULTI_PAGE_KEY,
+    SCAN_QUALITY_KEY,
+    type TagRow,
 } from '@/lib/db/queries';
 import { logInfo, logThrown } from '@/lib/debug-log';
 import type { ScanDocument, ScanPage } from '@/lib/model';

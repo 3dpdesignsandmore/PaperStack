@@ -18,8 +18,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, TextInput } from 'react-nativ
 
 import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
-import type { CaptureDialogState } from '@/hooks/use-capture';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
+import type { CaptureDialogState } from '@/hooks/use-capture';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 

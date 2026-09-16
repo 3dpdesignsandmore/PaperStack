@@ -23,8 +23,8 @@ import { useImportPhotos } from '@/hooks/use-import-photos';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
-import { logThrown } from '@/lib/debug-log';
 import { fetchLibrary } from '@/lib/db/queries';
+import { logThrown } from '@/lib/debug-log';
 import type { LibraryEntry } from '@/lib/model';
 
 /** Columns in the library grid. */

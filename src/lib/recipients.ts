@@ -36,7 +36,7 @@ import { generateId } from '@/lib/db/persist-scan';
 import { touchRecipient, type RecipientRow } from '@/lib/db/queries';
 import { RecipientChannel, upsertRecipientByChannel } from '@/lib/recipient-merge';
 
-export { channelSummary, channelsOf, RecipientChannel } from '@/lib/recipient-merge';
+export { channelsOf, channelSummary, RecipientChannel } from '@/lib/recipient-merge';
 
 /**
  * The app-facing merge with the real id generator bound in (the pure

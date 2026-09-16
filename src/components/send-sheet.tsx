@@ -28,10 +28,10 @@ import { AppButton } from '@/components/app-button';
 import { RecipientDropdown, RecipientPickerSheet, type RecipientAddress } from '@/components/recipient-picker';
 import { ThemedText } from '@/components/themed-text';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
-import { logThrown } from '@/lib/debug-log';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchRecipients, saveRecipient, type RecipientRow } from '@/lib/db/queries';
+import { logThrown } from '@/lib/debug-log';
 import {
     RecipientChannel,
     channelsOf,

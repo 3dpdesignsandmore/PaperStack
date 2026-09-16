@@ -16,13 +16,13 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
 import { PaletteId, ThemeAppearance } from '@/constants/theme';
-import { logThrown } from '@/lib/debug-log';
 import {
     getSettingSync,
     PALETTE_ID_KEY,
     setSetting,
     THEME_APPEARANCE_KEY,
 } from '@/lib/db/queries';
+import { logThrown } from '@/lib/debug-log';
 
 /** The raw preference and its setters. */
 export interface ThemeContextValue {

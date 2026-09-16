@@ -14,9 +14,9 @@
  * slot or the phone — so the picked channel + value is the one meant, not
  * a primary-first guess.
  */
+import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { SymbolView } from 'expo-symbols';
 
 import { ThemedText } from '@/components/themed-text';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
