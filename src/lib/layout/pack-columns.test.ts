@@ -147,6 +147,60 @@ describe('packColumns', () => {
       packColumns([], { ...OPTS, pageSize: { width: 0, height: 100 } }),
     ).toThrowError(/pageSize/);
   });
+
+  it('starts every column at the same top edge — a leading gutter must not carry across a column break', () => {
+    // Same fixture as "stacks items down a column...": a and b share
+    // column 0, c starts column 1.
+    const items: PackItem[] = [
+      { id: 'a', naturalWidth: 216, naturalHeight: 432 },
+      { id: 'b', naturalWidth: 216, naturalHeight: 432 },
+      { id: 'c', naturalWidth: 216, naturalHeight: 432 },
+    ];
+    const result = packColumns(items, OPTS);
+    const placed = result.pages[0].items;
+    const topOfColumn = LETTER.height - OPTS.margin; // 792 - 36 = 756
+    // a is column 0's first item; c is column 1's first item. Before the
+    // fix, c's leading gutterBefore was left over from column 0's overflow
+    // check and pushed it — and every column after the first — down by
+    // `verticalGutter`.
+    expect(placed[0].y + placed[0].height).toBeCloseTo(topOfColumn, 5);
+    expect(placed[2].y + placed[2].height).toBeCloseTo(topOfColumn, 5);
+  });
+});
+
+describe('packColumns with captionSpace', () => {
+  // Chosen so exactly 2 fit per column with no caption space reserved, but
+  // only 1 fits once 14pt is reserved below each: 2*350+12=712 ≤ 720, while
+  // 2*(350+14)+12=740 > 720.
+  const items: PackItem[] = [
+    { id: 'a', naturalWidth: 216, naturalHeight: 450 }, // height 450*(7/9)=350
+    { id: 'b', naturalWidth: 216, naturalHeight: 450 },
+  ];
+
+  it('keeps every item at or above margin + captionSpace', () => {
+    const varied = [receipt('a', 8), receipt('b', 0.5), receipt('c', 2.5)];
+    const result = packColumns(varied, { ...OPTS, captionSpace: 14 });
+    for (const page of result.pages) {
+      for (const item of page.items) {
+        expect(item.y).toBeGreaterThanOrEqual(36 + 14 - 1e-6);
+      }
+    }
+  });
+
+  it('fits fewer items per column than with no caption space', () => {
+    const withCaptionSpace = packColumns(items, { ...OPTS, captionSpace: 14 });
+    const without = packColumns(items, { ...OPTS, captionSpace: 0 });
+    const column0Count = (result: ReturnType<typeof packColumns>) =>
+      result.pages[0].items.filter((i) => i.x === 36).length;
+    expect(column0Count(without)).toBe(2);
+    expect(column0Count(withCaptionSpace)).toBe(1);
+  });
+
+  it('does not change minScale for unclamped items — width, not height, drives their scale', () => {
+    const withCaptionSpace = packColumns(items, { ...OPTS, captionSpace: 14 });
+    const without = packColumns(items, { ...OPTS, captionSpace: 0 });
+    expect(withCaptionSpace.minScale).toBeCloseTo(without.minScale, 5);
+  });
 });
 
 describe('fitColumns', () => {

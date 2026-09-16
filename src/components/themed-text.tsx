@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import { StyleSheet, Text, type TextProps } from 'react-native';
 
 import { Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -13,7 +13,7 @@ export type ThemedTextType =
   | 'label'
   | 'link'
   | 'linkPrimary'
-  | 'code';
+  | 'mono';
 
 export type ThemedTextProps = TextProps & {
   type?: ThemedTextType;
@@ -35,8 +35,8 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'subtitle' && styles.subtitle,
         type === 'label' && styles.label,
         type === 'link' && styles.link,
-        type === 'linkPrimary' && styles.linkPrimary,
-        type === 'code' && styles.code,
+        type === 'linkPrimary' && [styles.linkPrimary, { color: theme.accent }],
+        type === 'mono' && styles.mono,
         style,
       ]}
       {...rest}
@@ -45,55 +45,62 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 }
 
 const styles = StyleSheet.create({
-  small: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 500,
-  },
-  smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 700,
-  },
   default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 500,
+    fontFamily: Fonts.sansMedium,
+    fontSize: 15,
+    lineHeight: 22,
   },
   defaultSemiBold: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 600,
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 15,
+    lineHeight: 22,
   },
+  // 25% smaller than the original 34/38 (was sized for the display serif).
   title: {
-    fontSize: 48,
-    fontWeight: 600,
-    lineHeight: 52,
+    fontFamily: Fonts.sansBold,
+    fontSize: 26,
+    lineHeight: 29,
   },
   subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 20,
+    lineHeight: 26,
   },
+  small: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  smallBold: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  // +14% tracking (of 11) opens up the uppercase caps so they don't clump.
   label: {
+    fontFamily: Fonts.sansSemiBold,
     fontSize: 11,
     lineHeight: 16,
-    fontWeight: 700,
-    letterSpacing: 1.2,
+    letterSpacing: 1.54,
     textTransform: 'uppercase',
   },
   link: {
-    lineHeight: 30,
+    fontFamily: Fonts.sans,
     fontSize: 14,
+    lineHeight: 30,
   },
+  // Color is not set here — it's the app's current accent, which is a
+  // theme value, not a static one; see the inline override above.
   linkPrimary: {
-    lineHeight: 30,
+    fontFamily: Fonts.sans,
     fontSize: 14,
-    color: '#4E93F9',
+    lineHeight: 30,
   },
-  code: {
+  // Tabular figures so stacked amounts stay column-aligned.
+  mono: {
     fontFamily: Fonts.mono,
-    fontWeight: Platform.select({ android: 700 }) ?? 500,
-    fontSize: 12,
+    fontSize: 15,
+    lineHeight: 22,
+    fontVariant: ['tabular-nums'],
   },
 });

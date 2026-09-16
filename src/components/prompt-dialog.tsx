@@ -16,7 +16,7 @@ import {
 import { AppButton } from '@/components/app-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Radius, Spacing } from '@/constants/theme';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -65,7 +65,7 @@ export function PromptDialog({
       onRequestClose={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable
-          style={[styles.card, { backgroundColor: theme.background, borderColor: theme.border }]}
+          style={[styles.card, CardShadow(theme.shadow), { backgroundColor: theme.background }]}
           onPress={(e) => e.stopPropagation()}>
           <ThemedText type="subtitle">{title}</ThemedText>
           {message != null && (
@@ -123,7 +123,6 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: Radius.large,
-    borderWidth: 1,
     padding: Spacing.four,
     width: '100%',
     maxWidth: 420,

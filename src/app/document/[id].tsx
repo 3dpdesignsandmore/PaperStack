@@ -6,19 +6,21 @@
 import { Directory } from 'expo-file-system';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
 import { PromptDialog } from '@/components/prompt-dialog';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Radius, Spacing } from '@/constants/theme';
+import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, scanRootDir } from '@/lib/db/persist-scan';
 import { fetchDocument, fetchPages, renameDocument } from '@/lib/db/queries';
@@ -212,15 +214,34 @@ export default function DocumentDetailScreen() {
       />
 
       <SafeAreaView style={styles.actions} edges={['bottom']}>
-        <AppButton label={exporting ? 'Exporting…' : 'Export PDF'} onPress={onExport} disabled={exporting} />
-        <AppButton label="Rename" variant="outline" onPress={() => setRenaming(true)} />
-        <AppButton
-          label={adding ? 'Opening scanner…' : 'Add pages'}
-          variant="outline"
-          onPress={onAddPages}
-          disabled={adding}
-        />
-        <AppButton label="Delete" variant="danger" onPress={onDelete} />
+        <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow)]}>
+          <ActionBarItem
+            icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }}
+            label={exporting ? 'Exporting…' : 'Export'}
+            color={theme.accent}
+            onPress={onExport}
+            disabled={exporting}
+          />
+          <ActionBarItem
+            icon={{ ios: 'pencil', android: 'edit' }}
+            label="Rename"
+            color={theme.text}
+            onPress={() => setRenaming(true)}
+          />
+          <ActionBarItem
+            icon={{ ios: 'doc.badge.plus', android: 'note_add' }}
+            label={adding ? 'Adding…' : 'Add pages'}
+            color={theme.text}
+            onPress={onAddPages}
+            disabled={adding}
+          />
+          <ActionBarItem
+            icon={{ ios: 'trash', android: 'delete' }}
+            label="Delete"
+            color={theme.danger}
+            onPress={onDelete}
+          />
+        </ThemedView>
       </SafeAreaView>
 
       <PromptDialog
@@ -236,6 +257,47 @@ export default function DocumentDetailScreen() {
         onCancel={() => setRenaming(false)}
       />
     </ThemedView>
+  );
+}
+
+/** Props for {@link ActionBarItem}. */
+interface ActionBarItemProps {
+  icon: SymbolViewProps['name'];
+  label: string;
+  /** Icon + label tint — accent for the primary action, danger for the
+   * destructive one, `theme.text` for the rest. */
+  color: string;
+  onPress: () => void;
+  disabled?: boolean;
+}
+
+/**
+ * One icon-over-label item in the floating action bar — same visual
+ * language as `FloatingTabBar`'s items (icon, small non-uppercase label,
+ * press feedback), so this screen's actions read as part of the same app
+ * instead of a separate row of pill buttons.
+ */
+function ActionBarItem({ icon, label, color, onPress, disabled = false }: ActionBarItemProps) {
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const tint = disabled ? color + '80' : color;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      disabled={disabled}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={styles.actionItemHitArea}>
+      <Animated.View style={[styles.actionItem, animatedStyle]}>
+        <SymbolView name={icon} size={22} tintColor={tint} />
+        <ThemedText type="label" style={[styles.actionItemLabel, { color: tint }]}>
+          {label}
+        </ThemedText>
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -257,8 +319,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   pageCard: {
-    borderRadius: Radius.medium,
-    borderWidth: 1,
     padding: Spacing.two,
     gap: Spacing.one,
     alignItems: 'center',
@@ -270,10 +330,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#80808040',
   },
   actions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.two,
-    flexWrap: 'wrap',
     paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+  },
+  // Same pill silhouette as the floating tab bar, sized for four icon+label
+  // items instead of three tab items.
+  actionBar: {
+    flexDirection: 'row',
+    borderRadius: Radius.pill,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.one,
+  },
+  actionItemHitArea: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionItem: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  actionItemLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    textTransform: 'none',
+    letterSpacing: 0,
   },
 });

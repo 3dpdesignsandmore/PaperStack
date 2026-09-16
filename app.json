@@ -12,7 +12,6 @@
       "android"
     ],
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.tdpdesignsandmore.paperstack",
       "infoPlist": {
         "NSCameraUsageDescription": "PaperStack uses the camera to scan documents and receipts."
@@ -21,10 +20,8 @@
     "android": {
       "package": "com.tdpdesignsandmore.paperstack",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#092175",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -33,14 +30,23 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#092175",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 200
         }
       ],
       "expo-sharing",
       "react-native-document-scanner-plugin",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PaperStack uses your photo library to add existing photos as documents.",
+          "cameraPermission": "PaperStack uses the camera to scan documents and receipts.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

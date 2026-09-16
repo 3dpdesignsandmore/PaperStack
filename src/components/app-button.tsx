@@ -11,8 +11,13 @@ import { glowShadow, Radius, Spacing } from '@/constants/theme';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 
-/** Visual variants of {@link AppButton}. */
-export type AppButtonVariant = 'filled' | 'outline' | 'danger';
+/**
+ * Visual variants of {@link AppButton}. `muted` is a filled button in
+ * `theme.textSecondary` rather than the accent — Compose's "export anyway"
+ * state (plan/UI.md §4): the action stays available, just visually
+ * discouraged rather than colored as a destructive `danger` action.
+ */
+export type AppButtonVariant = 'filled' | 'outline' | 'danger' | 'muted';
 
 /** Props for {@link AppButton}. */
 export interface AppButtonProps {
@@ -42,15 +47,30 @@ export function AppButton({
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
 
   const backgroundColor =
-    variant === 'filled' ? theme.accent : 'transparent';
+    variant === 'filled' ? theme.accent : variant === 'muted' ? theme.textSecondary : 'transparent';
   const borderColor =
-    variant === 'danger' ? theme.danger : variant === 'outline' ? theme.border : theme.accent;
-  // Filled uses accentText; outlines use their own border color.
+    variant === 'danger'
+      ? theme.danger
+      : variant === 'muted'
+        ? theme.textSecondary
+        : variant === 'outline'
+          ? theme.border
+          : theme.accent;
+  // Filled and muted both sit on a solid fill, so their labels need the
+  // page background color rather than accent/danger text.
   const textColor =
-    variant === 'filled' ? theme.accentText : variant === 'danger' ? theme.danger : theme.accent;
+    variant === 'filled'
+      ? theme.accentText
+      : variant === 'muted'
+        ? theme.background
+        : variant === 'danger'
+          ? theme.danger
+          : theme.accent;
   // The filled variant is the primary action — give it a soft glow rather
   // than a flat fill. A black shadow would barely show against this app's
-  // dark background; a colored glow stays visible in both themes.
+  // dark background; a colored glow stays visible in both themes. `muted`
+  // is deliberately flat — it's the discouraged path, not the emphasized
+  // one.
   const glow = variant === 'filled' && !disabled ? glowShadow(theme.accent) : null;
 
   return (

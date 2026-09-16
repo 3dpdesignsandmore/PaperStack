@@ -116,6 +116,20 @@ export async function getSetting(
   return row?.value ?? null;
 }
 
+/**
+ * Synchronous counterpart to {@link getSetting} — for the one place a
+ * setting must be read before first render (the theme preference in
+ * `theme-provider.tsx`'s initial state), where an async load would flash
+ * the default for one frame on every launch.
+ */
+export function getSettingSync(db: SQLiteDatabase, key: string): string | null {
+  const row = db.getFirstSync<{ value: string }>(
+    'SELECT value FROM app_settings WHERE key = ?',
+    [key],
+  );
+  return row?.value ?? null;
+}
+
 /** Create or overwrite one setting. */
 export async function setSetting(
   db: SQLiteDatabase,
@@ -131,3 +145,11 @@ export async function setSetting(
 
 /** Setting key holding the prefix suggested when naming a new scan. */
 export const SCAN_NAME_PREFIX_KEY = 'scan_name_prefix';
+/** Setting key holding the scanner's cropped-image JPEG quality (0-100). */
+export const SCAN_QUALITY_KEY = 'scan_quality';
+/** Setting key holding whether a scan session may capture multiple pages. */
+export const SCAN_MULTI_PAGE_KEY = 'scan_multi_page';
+/** Setting key holding the chosen palette id (a `PaletteId`). */
+export const PALETTE_ID_KEY = 'palette_id';
+/** Setting key holding the appearance override (a `ThemeAppearance`). */
+export const THEME_APPEARANCE_KEY = 'theme_appearance';

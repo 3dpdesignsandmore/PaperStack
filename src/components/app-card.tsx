@@ -1,9 +1,13 @@
 /**
- * Shared elevated surface — the bordered `backgroundElement` box repeated
+ * Shared elevated surface — the raised `backgroundElement` box repeated
  * across every screen (Settings sections, the Scan capture card, the
- * Compose control card, document detail page cards, dialog cards), now
- * with a consistent shadow so surfaces read as raised rather than just
- * outlined.
+ * Compose control card, document detail page cards, dialog cards).
+ *
+ * Depth comes from two cues and only two: the `background` →
+ * `backgroundElement` lightness step and {@link CardShadow}. The 1px border
+ * this component used to draw was a third cue doing the same job, and
+ * borders on every surface are what made the UI read as a wireframe — so it
+ * is gone deliberately. Don't add it back per-screen.
  *
  * Not used where the card also clips its own content with `overflow:
  * 'hidden'` (the Library grid thumbnails) — `overflow: 'hidden'` would
@@ -25,7 +29,7 @@ export function AppCard({ style, ...rest }: ViewProps) {
   return (
     <ThemedView
       type="backgroundElement"
-      style={[{ borderRadius: Radius.large, borderWidth: 1, borderColor: theme.border }, CardShadow, style]}
+      style={[{ borderRadius: Radius.large }, CardShadow(theme.shadow), style]}
       {...rest}
     />
   );

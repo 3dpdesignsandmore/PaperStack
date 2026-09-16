@@ -1,237 +1,218 @@
 /**
- * Library screen (plan §8): grid of scanned documents, newest first.
- * Lives at the `/` route (file must be index.tsx — the launch URL must
- * resolve), labeled "Library" in the tab bar.
+ * Home (plan/UI.md §1, §4): a dashboard, not a menu. Takes over the launch
+ * route (`index.tsx`) from Library, which moved to `library.tsx`. Every
+ * element here either tells the user something they didn't know or starts
+ * work they came here to do — a tile that only says "Library" would fail
+ * that test, since the tab bar already does it.
  */
+import { Directory, Paths } from 'expo-file-system';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
-import {
-    ActivityIndicator,
-    FlatList,
-    Pressable,
-    RefreshControl,
-    StyleSheet,
-} from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { FlatList, Pressable, ScrollView, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppButton } from '@/components/app-button';
+import { AppCard } from '@/components/app-card';
+import { SaveScanDialog } from '@/components/save-scan-dialog';
+import { ScreenTitle } from '@/components/screen-title';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, CardShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { BottomTabInset, glowShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useCapture } from '@/hooks/use-capture';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLibrary } from '@/lib/db/queries';
 import type { LibraryEntry } from '@/lib/model';
+import { SCAN_DIR_NAME } from '@/lib/db/persist-scan';
 
-/** Columns in the library grid. */
-const NUM_COLUMNS = 2;
+/** How many of the newest documents show in the Recent row. */
+const RECENT_COUNT = 5;
 
-export default function LibraryScreen() {
+/** Human-readable byte size, e.g. "38.4 MB". */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+export default function HomeScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
   const router = useRouter();
+  const { capture, dialog } = useCapture();
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [usedBytes, setUsedBytes] = useState<number | null>(null);
+  // Tracks the document count `usedBytes` was last computed for, so a plain
+  // tab-switch back to Home doesn't re-walk the scans directory.
+  const sizedForCount = useRef<number | null>(null);
 
   const load = useCallback(async () => {
-    setEntries(await fetchLibrary(db));
+    const library = await fetchLibrary(db);
+    setEntries(library);
+    // `Directory.size` is a synchronous, recursive filesystem walk — real
+    // cost with enough scans. `fetchLibrary` runs on every focus (a tab
+    // switch back to Home), so only re-walk when the document count
+    // actually changed since the last read (a new scan or a delete);
+    // renaming or appending pages to an existing document won't refresh
+    // this figure until the count next changes, which is an acceptable
+    // approximation for a status line, not an exact quota.
+    if (sizedForCount.current !== library.length) {
+      sizedForCount.current = library.length;
+      setUsedBytes(new Directory(Paths.document, SCAN_DIR_NAME).size ?? 0);
+    }
   }, [db]);
 
-  // Reload whenever the tab gains focus (e.g. after a scan completes on the
-  // Scan tab and the user comes back).
   useFocusEffect(
     useCallback(() => {
       load();
     }, [load]),
   );
 
-  function toggleSelected(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
-
-  async function onRefresh() {
-    setRefreshing(true);
-    try {
-      await load();
-    } finally {
-      setRefreshing(false);
+  async function onScan() {
+    const documentId = await capture();
+    if (documentId != null) {
+      router.push(`/document/${documentId}`);
     }
   }
+
+  const recent = entries?.slice(0, RECENT_COUNT) ?? [];
+  const isEmpty = entries != null && entries.length === 0;
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.header}>
-          <ThemedView style={styles.headerLabel}>
-            <ThemedText type="label" style={{ color: theme.accent }}>
-              Your scans
-            </ThemedText>
-          </ThemedView>
-          <ThemedText type="title" style={styles.title}>
-            Library
-          </ThemedText>
-          <ThemedView style={styles.headerRow}>
-            {entries != null && (
-              <ThemedText
-                type="small"
-                numberOfLines={1}
-                style={[styles.entryCount, { color: theme.textSecondary }]}>
-                {entries.length} document{entries.length === 1 ? '' : 's'}
-              </ThemedText>
-            )}
-            {entries != null && entries.length > 0 && (
-              <AppButton
-                label={selecting ? 'Done' : 'Select'}
-                variant="outline"
-                onPress={() => {
-                  setSelecting((s) => !s);
-                  setSelected(new Set());
-                }}
-              />
-            )}
-          </ThemedView>
-        </ThemedView>
+        <ScrollView contentContainerStyle={styles.content}>
+          <ScreenTitle
+            eyebrow="PaperStack"
+            title="Home"
+            right={
+              <Pressable
+                onPress={() => router.push('/settings')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
+                style={({ pressed }) => [
+                  styles.gearButton,
+                  { backgroundColor: theme.backgroundSelected },
+                  pressed && styles.pressed,
+                ]}>
+                <SymbolView name={{ ios: 'gearshape.fill', android: 'settings' }} size={18} tintColor={theme.text} />
+              </Pressable>
+            }
+          />
 
-        {entries == null ? (
-          <ActivityIndicator style={styles.center} size="large" />
-        ) : entries.length === 0 ? (
-          <ThemedView type="backgroundElement" style={styles.emptyState}>
-            <ThemedText type="subtitle" style={{ color: theme.text }}>
-              No documents yet
-            </ThemedText>
-            <ThemedText
-              type="small"
-              style={[styles.emptyHint, { color: theme.textSecondary }]}>
-              Head to the Scan tab to capture your first receipt or document.
-              Everything stays on this device.
-            </ThemedText>
+          <ThemedView style={styles.tileRow}>
+            <ActionTile
+              icon={{ ios: 'camera.viewfinder', android: 'document_scanner' }}
+              label="Scan"
+              accent
+              onPress={onScan}
+            />
+            <ActionTile
+              icon={{ ios: 'square.stack', android: 'layers' }}
+              label="Combine documents"
+              onPress={() => router.push({ pathname: '/library', params: { select: 'combine' } })}
+            />
           </ThemedView>
-        ) : (
-          <FlatList
-            data={entries}
-            keyExtractor={(item) => item.id}
-            numColumns={NUM_COLUMNS}
-            contentContainerStyle={styles.gridContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-            renderItem={({ item }) => (
-              <LibraryCard
-                item={item}
-                selecting={selecting}
-                selected={selected.has(item.id)}
-                onPress={() => {
-                  if (selecting) {
-                    toggleSelected(item.id);
-                  } else {
-                    router.push(`/document/${item.id}`);
-                  }
-                }}
+
+          {!isEmpty && recent.length > 0 && (
+            <ThemedView style={styles.section}>
+              <ThemedView style={styles.sectionHeader}>
+                <ThemedText type="label" style={{ color: theme.textSecondary }}>
+                  Recent
+                </ThemedText>
+                <Pressable onPress={() => router.push('/library')} hitSlop={8}>
+                  <ThemedText type="link" style={{ color: theme.accent }}>
+                    See all
+                  </ThemedText>
+                </Pressable>
+              </ThemedView>
+              <FlatList
+                data={recent}
+                keyExtractor={(item) => item.id}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.recentContent}
+                renderItem={({ item }) => (
+                  <Pressable onPress={() => router.push(`/document/${item.id}`)} style={styles.recentItem}>
+                    <Image
+                      source={{ uri: item.firstThumbPath ?? undefined }}
+                      style={[
+                        styles.recentThumb,
+                        { borderRadius: Radius.medium, backgroundColor: theme.backgroundSelected },
+                      ]}
+                      contentFit="cover"
+                      transition={150}
+                      // Same recycling gotcha as Library's PaperThumb — this
+                      // list is small enough today to not show it, but a
+                      // FlatList cell can still get reused.
+                      recyclingKey={item.firstThumbPath ?? undefined}
+                    />
+                    <ThemedText type="small" numberOfLines={1} style={styles.recentTitle}>
+                      {item.title}
+                    </ThemedText>
+                  </Pressable>
+                )}
               />
-            )}
-          />
-        )}
-        {selecting && selected.size > 0 && (
-          <AppButton
-            label={`Compose ${selected.size} into packed PDF`}
-            onPress={() =>
-              router.push({
-                pathname: '/compose',
-                params: { ids: Array.from(selected).join(',') },
-              })
-            }
-            style={styles.composeBar}
-          />
-        )}
+            </ThemedView>
+          )}
+
+          {entries != null && usedBytes != null && (
+            <ThemedText type="small" style={[styles.statusLine, { color: theme.textSecondary }]}>
+              {isEmpty
+                ? 'Scan your first document. Everything stays on this device.'
+                : `${entries.length} document${entries.length === 1 ? '' : 's'} · ${formatBytes(usedBytes)} used`}
+            </ThemedText>
+          )}
+        </ScrollView>
       </SafeAreaView>
+
+      <SaveScanDialog {...dialog} />
     </ThemedView>
   );
 }
 
-/** Props for {@link LibraryCard}. */
-interface LibraryCardProps {
-  item: LibraryEntry;
-  selecting: boolean;
-  selected: boolean;
+/** Props for {@link ActionTile}. */
+interface ActionTileProps {
+  icon: SymbolViewProps['name'];
+  label: string;
+  accent?: boolean;
   onPress: () => void;
 }
 
-/**
- * One grid cell: thumbnail, title, detail line, with press feedback and a
- * shadow. Its own component (not inlined in `renderItem`) because
- * `usePressScale` is a hook — `renderItem` is a plain callback invoked per
- * row, not a component instance, so a hook can't live there directly.
- *
- * The shadow lives on the wrapper around `cardInner` rather than on
- * `cardInner` itself: `cardInner` sets `overflow: 'hidden'` to clip the
- * thumbnail's corners, and `overflow: 'hidden'` would clip the shadow too.
- */
-function LibraryCard({ item, selecting, selected, onPress }: LibraryCardProps) {
+/** One of Home's two primary action tiles. */
+function ActionTile({ icon, label, accent = false, onPress }: ActionTileProps) {
   const theme = useTheme();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const glow = accent ? glowShadow(theme.accent) : null;
 
   return (
-    <Pressable style={styles.card} onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
-      <Animated.View style={[CardShadow, animatedStyle]}>
-        <ThemedView
-          type="backgroundElement"
-          style={[
-            styles.cardInner,
-            { borderColor: theme.border },
-            selecting && selected && { borderColor: theme.accent, borderWidth: 2 },
-          ]}>
-          <Image
-            source={{ uri: item.firstThumbPath ?? undefined }}
-            style={styles.thumbnail}
-            contentFit="cover"
-            recyclingKey={item.id}
-            transition={150}
-          />
-          {selecting && selected && (
-            <ThemedView
-              style={[
-                styles.checkBadge,
-                { backgroundColor: theme.accent, borderColor: theme.background },
-              ]}>
-              <ThemedText type="smallBold" style={[styles.checkText, { color: theme.accentText }]}>
-                {'✓'}
-              </ThemedText>
-            </ThemedView>
-          )}
-          <ThemedView style={styles.cardBody}>
-            <ThemedText type="smallBold" style={styles.cardTitle} numberOfLines={1}>
-              {item.title}
-            </ThemedText>
-            <ThemedText type="small" style={[styles.cardDetail, { color: theme.textSecondary }]}>
-              {formatDate(item.createdAt)} · {item.pageCount} page
-              {item.pageCount === 1 ? '' : 's'}
-            </ThemedText>
-          </ThemedView>
-        </ThemedView>
-      </Animated.View>
-    </Pressable>
+    <Animated.View style={[styles.tile, glow, animatedStyle]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        style={styles.tilePressable}>
+        <AppCard style={[styles.tileCard, accent && { backgroundColor: theme.accent }]}>
+          <SymbolView name={icon} size={26} tintColor={accent ? theme.accentText : theme.text} />
+          <ThemedText type="defaultSemiBold" style={{ color: accent ? theme.accentText : theme.text }}>
+            {label}
+          </ThemedText>
+        </AppCard>
+      </Pressable>
+    </Animated.View>
   );
-}
-
-/** Stable short date for the card detail line. */
-function formatDate(epochMs: number): string {
-  const d = new Date(epochMs);
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${month}-${day}`;
 }
 
 const styles = StyleSheet.create({
@@ -244,99 +225,60 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: MaxContentWidth,
   },
-  header: {
+  content: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: BottomTabInset + Spacing.three,
+    gap: Spacing.four,
+  },
+  gearButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  tileRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+  },
+  tile: {
+    flex: 1,
+  },
+  tilePressable: {
+    flex: 1,
+  },
+  tileCard: {
+    flex: 1,
+    aspectRatio: 1.15,
+    padding: Spacing.three,
+    justifyContent: 'space-between',
+  },
+  section: {
     gap: Spacing.two,
   },
-  headerRow: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.two,
   },
-  entryCount: {
-    flexShrink: 1,
+  recentContent: {
+    gap: Spacing.three,
   },
-  title: {
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: '800',
-    paddingHorizontal: Spacing.four,
+  recentItem: {
+    width: 110,
+    gap: Spacing.one,
   },
-  headerLabel: {
-    paddingHorizontal: Spacing.four,
-  },
-  center: {
-    flex: 1,
-  },
-  emptyState: {
-    flex: 1,
-    margin: Spacing.four,
-    marginBottom: BottomTabInset + Spacing.three,
-    borderRadius: Radius.large,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    gap: Spacing.two,
-    padding: Spacing.four,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyHint: {
-    textAlign: 'center',
-    maxWidth: 320,
-  },
-  gridContent: {
-    paddingHorizontal: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-  },
-  card: {
-    flex: 1 / NUM_COLUMNS,
-    margin: Spacing.one,
-    borderRadius: Radius.medium,
-  },
-  cardInner: {
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  thumbnail: {
-    width: '100%',
+  recentThumb: {
+    width: 110,
     aspectRatio: 3 / 4,
-    backgroundColor: '#80808040',
   },
-  cardBody: {
-    gap: Spacing.half,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
+  recentTitle: {
+    textAlign: 'left',
   },
-  cardTitle: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  cardDetail: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  checkBadge: {
-    position: 'absolute',
-    top: Spacing.two,
-    right: Spacing.two,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
-  composeBar: {
-    position: 'absolute',
-    left: Spacing.three,
-    right: Spacing.three,
-    bottom: BottomTabInset + Spacing.two,
+  statusLine: {
+    textAlign: 'center',
   },
 });

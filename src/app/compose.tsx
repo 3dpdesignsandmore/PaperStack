@@ -1,129 +1,146 @@
 /**
- * Compose screen (plan §5, Phase 4): the N-up composition cockpit for one
- * document's pages. Reached from the document detail screen's Export →
- * Combine option via /compose?id=<docId>.
+ * Compose screen (plan/UI.md §4, PLAN.md §5): the N-up composition cockpit
+ * for a set of documents' pages. Reached either from the document detail
+ * screen's Export → Combine option via /compose?id=<docId> (one document),
+ * or from Library's multi-select Combine via /compose?ids=<id,id,...>
+ * (several documents' pages stacked together).
  *
- * Presents a live page preview (schematic rectangles of the packed
- * layout — exactly what `packColumns` computed), a column selector with
- * the §5 legibility verdict computed live, captions/separators toggles,
- * and Export → packed PDF + share sheet.
+ * A true-to-scale US-Letter page preview shows exactly what `packColumns`
+ * computed, with items animating to their new positions as the column
+ * count changes (§4's one interaction worth real effort) — plus a column
+ * selector with the §5 legibility verdict computed live, and Export →
+ * stacked PDF + share sheet.
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useMemo, useState } from 'react';
-import {
-    Alert,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    useWindowDimensions,
-    View,
-} from 'react-native';
-import Animated from 'react-native-reanimated';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
+import { LegibilityMeter } from '@/components/legibility-meter';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
-import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchDocument, fetchPages } from '@/lib/db/queries';
-import { LETTER } from '@/lib/layout/pack-columns';
+import { fitColumns, LETTER, type PlacedItem } from '@/lib/layout/pack-columns';
 import type { ScanDocument, ScanPage } from '@/lib/model';
 import {
+    CAPTION_HEIGHT,
+    combinedTitle,
+    COMPOSE_GEO,
     composeLayout,
     exportAndShareComposition,
+    pagesToPackItems,
 } from '@/lib/pdf/compose';
 
 /** Legibility thresholds (plan §5): below this, export is blocked outright. */
 const BLOCK_SCALE = 0.45;
-/** Preview content padding on each side — kept in sync with `styles.content`. */
-const PREVIEW_PADDING = Spacing.four;
+/** Preview width as a fraction of the screen. */
+const PREVIEW_WIDTH_RATIO = 0.7;
 /** Preview never grows past this even on large screens (tablets). */
-const MAX_PREVIEW_WIDTH = 300;
+const MAX_PREVIEW_WIDTH = 340;
+/** Reflow animation (plan/UI.md §4). */
+const REFLOW_SPRING = { damping: 18, stiffness: 140 };
+/** Column options offered, "Auto" being a computed fit rather than a literal. */
+const COLUMN_OPTIONS: readonly ('auto' | number)[] = ['auto', 2, 3, 4, 6];
+
+/** `/compose?id=<docId>` or `/compose?ids=<id,id,...>`, normalized to a list. */
+function parseDocumentIds(idParam: string | undefined, idsParam: string | undefined): string[] {
+  if (idsParam != null && idsParam.length > 0) {
+    return idsParam.split(',').filter((value) => value.length > 0);
+  }
+  if (idParam != null && idParam.length > 0) {
+    return [idParam];
+  }
+  return [];
+}
 
 export default function ComposeScreen() {
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string; ids?: string }>();
   // expo-router params can be `string[]` or missing for a malformed link.
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
+  const idsParam = Array.isArray(params.ids) ? params.ids[0] : params.ids;
+  const documentIds = parseDocumentIds(idParam, idsParam);
   const router = useRouter();
   const db = useSQLiteContext();
   const theme = useTheme();
   const { width: windowWidth } = useWindowDimensions();
-  // Scale the preview to the actual screen width instead of a fixed
-  // constant — a hardcoded 300pt overflows a 320pt-wide phone once the
-  // screen's own horizontal padding is subtracted.
-  const previewWidth = Math.min(MAX_PREVIEW_WIDTH, windowWidth - PREVIEW_PADDING * 2);
+  const previewWidth = Math.min(MAX_PREVIEW_WIDTH, windowWidth * PREVIEW_WIDTH_RATIO);
+  const previewHeight = (previewWidth * LETTER.height) / LETTER.width;
+  const previewScale = previewWidth / LETTER.width;
 
-  const [doc, setDoc] = useState<ScanDocument | null>(null);
+  const [documents, setDocuments] = useState<ScanDocument[] | null>(null);
   const [pages, setPages] = useState<ScanPage[] | null>(null);
-  const [columns, setColumns] = useState(3);
+  const [columnMode, setColumnMode] = useState<'auto' | number>('auto');
   const [separators, setSeparators] = useState(true);
   const [captions, setCaptions] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    if (id == null) {
+    const ids = parseDocumentIds(idParam, idsParam);
+    if (ids.length === 0) {
       return;
     }
     let cancelled = false;
     (async () => {
-      const document = await fetchDocument(db, id);
-      const docPages = await fetchPages(db, id);
-      if (!cancelled) {
-        setDoc(document);
-        setPages(docPages);
+      // Independent reads, not a read-modify-write of shared state, so
+      // fetching every document's pages concurrently is safe — order is
+      // still preserved (Promise.all resolves positionally, regardless of
+      // which fetch actually finishes first).
+      const results = await Promise.all(
+        ids.map(async (documentId) => {
+          const doc = await fetchDocument(db, documentId);
+          if (doc == null) {
+            return null;
+          }
+          const docPages = await fetchPages(db, documentId);
+          return { doc, docPages };
+        }),
+      );
+      if (cancelled) {
+        return;
       }
+      const found = results.filter((r): r is { doc: ScanDocument; docPages: ScanPage[] } => r != null);
+      setDocuments(found.map((r) => r.doc));
+      setPages(found.flatMap((r) => r.docPages));
     })();
     return () => {
       cancelled = true;
     };
-  }, [db, id]);
+  }, [db, idParam, idsParam]);
 
-  const layout = useMemo(() => {
-    if (doc == null || pages == null) {
-      return null;
-    }
-    return composeLayout(doc, pages, columns);
-  }, [doc, pages, columns]);
+  // Auto-fit and the live layout below must reserve the same caption space
+  // the export path will (see composeLayout's own comment) — otherwise the
+  // preview shows more items per column than the PDF actually gets.
+  const captionSpace = captions ? CAPTION_HEIGHT : 0;
+  const columns =
+    columnMode === 'auto'
+      ? pages == null
+        ? 3
+        : fitColumns(pagesToPackItems(pages), { ...COMPOSE_GEO, captionSpace })
+      : columnMode;
 
-  const previewScale = previewWidth / LETTER.width;
+  const layout = pages == null ? null : composeLayout(pages, columns, captions);
   const blocked = layout != null && layout.minScale < BLOCK_SCALE;
-
-  const verdict = useMemo(() => {
-    if (layout == null) {
-      return '';
-    }
-    const s = layout.minScale;
-    if (s >= 0.6) {
-      return `Fine — every item at ${Math.round(s * 100)}% of original size`;
-    }
-    if (s >= 0.45) {
-      return `Warning — text may be hard to read when printed (${Math.round(
-        s * 100,
-      )}%)`;
-    }
-    return `Blocked — shrunk to ${Math.round(
-      s * 100,
-    )}%. Reduce columns or remove items`;
-  }, [layout]);
+  const title = documents != null ? combinedTitle(documents) : '';
 
   async function runExport() {
-    if (doc == null || pages == null) {
+    if (documents == null || pages == null) {
       return;
     }
     setExporting(true);
     try {
       const result = await exportAndShareComposition(
-        doc,
+        documents,
         pages,
         { columns, separators, captions },
-        doc.title,
+        title,
       );
       Alert.alert(
         'Exported',
@@ -159,18 +176,18 @@ export default function ComposeScreen() {
     );
   }
 
-  if (id == null) {
+  if (documentIds.length === 0) {
     return (
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
           <ScreenHeader title="Compose" />
-          <CenteredMessage message="No document selected." />
+          <CenteredMessage message="No documents selected." />
         </SafeAreaView>
       </ThemedView>
     );
   }
 
-  if (doc == null || pages == null) {
+  if (documents == null || pages == null) {
     return (
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
@@ -185,9 +202,13 @@ export default function ComposeScreen() {
     return (
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
-          <ScreenHeader title={doc.title} />
+          <ScreenHeader title={title} />
           <ThemedView style={styles.center}>
-            <ThemedText>This document has no pages to compose.</ThemedText>
+            <ThemedText>
+              {documents.length === 1
+                ? 'This document has no pages to stack.'
+                : 'None of the selected documents have pages to stack.'}
+            </ThemedText>
             <Pressable onPress={() => router.back()}>
               <ThemedText type="linkPrimary">Back</ThemedText>
             </Pressable>
@@ -197,89 +218,63 @@ export default function ComposeScreen() {
     );
   }
 
+  const firstPageItems = layout?.pages[0]?.items ?? [];
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScreenHeader title="Compose" />
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="subtitle">{doc.title}</ThemedText>
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            Combining {pages.length} page{pages.length === 1 ? '' : 's'} into
-            packed sheets
-          </ThemedText>
-
-          {/* Live preview: the true packed geometry, scaled down. */}
-          {layout != null && (
-            <View style={styles.previewRow}>
-              {layout.pages.slice(0, 3).map((page, pageIdx) => {
-                const pageWidth = previewWidth / 3 - Spacing.two;
-                const pageHeight = (pageWidth * LETTER.height) / LETTER.width;
-                return (
-                  // The shadow lives on this sizing wrapper, not on
-                  // `previewPage` itself — that view clips its children
-                  // (the packed item rects) with `overflow: 'hidden'`,
-                  // which would clip the shadow too. A soft shadow here
-                  // also just reads as a sheet of paper, which is the point.
-                  <View key={pageIdx} style={[{ width: pageWidth, height: pageHeight }, CardShadow]}>
-                    <View style={styles.previewPage}>
-                      {page.items.map((item) => (
-                        <View
-                          key={item.id}
-                          style={{
-                            position: 'absolute',
-                            left: item.x * previewScale * (1 / 3),
-                            top: (LETTER.height - item.y - item.height) * previewScale * (1 / 3),
-                            width: item.width * previewScale * (1 / 3),
-                            height: item.height * previewScale * (1 / 3),
-                            backgroundColor: theme.backgroundSelected,
-                            borderColor: theme.textSecondary,
-                            borderWidth: 0.5,
-                          }}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                );
-              })}
-              {layout.pages.length > 3 && (
-                <ThemedText type="small">
-                  +{layout.pages.length - 3} more page(s)
-                </ThemedText>
-              )}
+          <View style={[styles.previewWrap, { width: previewWidth, height: previewHeight }, CardShadow(theme.shadow)]}>
+            <View style={[styles.previewPage, { backgroundColor: theme.backgroundElement }]}>
+              {pages.map((page) => (
+                <PreviewTile
+                  key={page.id}
+                  target={targetRect(page, firstPageItems, previewScale, previewHeight, previewWidth)}
+                  color={theme.backgroundSelected}
+                  borderColor={theme.border}
+                />
+              ))}
             </View>
-          )}
-
-          <ThemedText
-            type="small"
-            style={{
-              color: blocked ? theme.danger : layout != null && layout.minScale < 0.6 ? theme.warning : theme.textSecondary,
-            }}>
-            {layout != null
-              ? `${layout.pages.length} page(s) · ${verdict}`
-              : ''}
+          </View>
+          <ThemedText type="small" style={[styles.caption, { color: theme.textSecondary }]}>
+            Page 1 of {layout?.pages.length ?? 1} · US Letter
           </ThemedText>
 
           <AppCard style={styles.controlCard}>
-            <ThemedText type="defaultSemiBold">Columns: {columns}</ThemedText>
-            <View style={styles.stepperRow}>
-              {[2, 3, 4, 6].map((c) => (
-                <ColumnChip key={c} count={c} active={c === columns} onPress={() => setColumns(c)} />
+            <View style={styles.readoutRow}>
+              <ThemedText type="defaultSemiBold">Columns</ThemedText>
+              <ThemedText type="mono" style={{ color: theme.textSecondary }}>
+                {layout != null ? `${Math.round(layout.minScale * 100)}%` : ''}
+              </ThemedText>
+            </View>
+
+            <View style={styles.chipRow}>
+              {COLUMN_OPTIONS.map((option) => (
+                <ColumnChip
+                  key={option}
+                  label={option === 'auto' ? 'Auto' : String(option)}
+                  active={columnMode === option}
+                  onPress={() => setColumnMode(option)}
+                />
               ))}
             </View>
 
-            <ThemedView type="background" style={styles.switchRow}>
+            <View style={styles.switchRow}>
               <ThemedText type="small">Separators</ThemedText>
               <Switch value={separators} onValueChange={setSeparators} />
-            </ThemedView>
-            <ThemedView type="background" style={styles.switchRow}>
+            </View>
+            <View style={styles.switchRow}>
               <ThemedText type="small">Captions</ThemedText>
               <Switch value={captions} onValueChange={setCaptions} />
-            </ThemedView>
+            </View>
           </AppCard>
 
+          {layout != null && <LegibilityMeter scale={layout.minScale} />}
+
           <AppButton
-            label={exporting ? 'Exporting…' : blocked ? 'Review before exporting' : 'Export packed PDF'}
-            variant={blocked ? 'danger' : 'filled'}
+            label={exporting ? 'Exporting…' : blocked ? 'Review before exporting' : 'Export stacked PDF'}
+            variant={blocked ? 'muted' : 'filled'}
             onPress={onExport}
             disabled={exporting}
             style={styles.exportButton}
@@ -290,35 +285,113 @@ export default function ComposeScreen() {
   );
 }
 
+/** One tile's animation target, in preview-view pixels. */
+interface TileTarget {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  opacity: number;
+}
+
+/**
+ * Convert one page's PDF-space placement (if it landed on page 1 of the
+ * current layout) to a view-space animation target. PDF origin is
+ * bottom-left; the view's is top-left — `top = (pageHeight - y - height) *
+ * scale` is the flip. Pages that spilled onto page 2+ get a target below
+ * the sheet at zero opacity, so the tile animates away instead of
+ * vanishing.
+ */
+function targetRect(
+  page: ScanPage,
+  firstPageItems: PlacedItem[],
+  scale: number,
+  previewHeight: number,
+  previewWidth: number,
+): TileTarget {
+  const placed = firstPageItems.find((item) => item.id === page.id);
+  if (placed == null) {
+    return { left: 0, top: previewHeight, width: previewWidth, height: 40, opacity: 0 };
+  }
+  return {
+    left: placed.x * scale,
+    top: (LETTER.height - placed.y - placed.height) * scale,
+    width: placed.width * scale,
+    height: placed.height * scale,
+    opacity: 1,
+  };
+}
+
+/** Props for {@link PreviewTile}. */
+interface PreviewTileProps {
+  target: TileTarget;
+  color: string;
+  borderColor: string;
+}
+
+/**
+ * One stacked item's schematic rectangle in the preview sheet. Holds its
+ * own shared values (plan/UI.md §4: "use useSharedValue / useDerivedValue
+ * explicitly — the compiler does not manage worklet values") so a stable
+ * key across column-count changes lets it spring to its new rect instead
+ * of remounting.
+ */
+function PreviewTile({ target, color, borderColor }: PreviewTileProps) {
+  const left = useSharedValue(target.left);
+  const top = useSharedValue(target.top);
+  const width = useSharedValue(target.width);
+  const height = useSharedValue(target.height);
+  const opacity = useSharedValue(target.opacity);
+
+  // Reanimated shared values are mutable by design (CLAUDE.md's
+  // reactCompiler exception) — same rationale as `use-press-scale.ts`.
+  useEffect(() => {
+    left.value = withSpring(target.left, REFLOW_SPRING);
+    top.value = withSpring(target.top, REFLOW_SPRING);
+    width.value = withSpring(target.width, REFLOW_SPRING);
+    height.value = withSpring(target.height, REFLOW_SPRING);
+    opacity.value = withSpring(target.opacity, REFLOW_SPRING);
+  }, [target.left, target.top, target.width, target.height, target.opacity, left, top, width, height, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: left.value,
+    top: top.value,
+    width: width.value,
+    height: height.value,
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[animatedStyle, { backgroundColor: color, borderColor, borderWidth: 0.5 }]}
+    />
+  );
+}
+
 /** Props for {@link ColumnChip}. */
 interface ColumnChipProps {
-  count: number;
+  label: string;
   active: boolean;
   onPress: () => void;
 }
 
-/**
- * One column-count option. Its own component (not inlined in the `.map()`
- * that renders the four options) because `usePressScale` is a hook, and
- * hooks can't be called inside a loop callback.
- */
-function ColumnChip({ count, active, onPress }: ColumnChipProps) {
+/** One column-count option — filled, not outlined (plan/UI.md §5 sweep). */
+function ColumnChip({ label, active, onPress }: ColumnChipProps) {
   const theme = useTheme();
-  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
 
   return (
-    <Pressable onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
-      <Animated.View
-        style={[
-          styles.columnChip,
-          { borderColor: theme.border },
-          active && { borderColor: theme.accent, backgroundColor: theme.accent },
-          animatedStyle,
-        ]}>
-        <ThemedText type="defaultSemiBold" style={{ color: active ? theme.accentText : theme.text }}>
-          {count}
-        </ThemedText>
-      </Animated.View>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={[
+        styles.columnChip,
+        { backgroundColor: active ? theme.text : theme.backgroundSelected },
+      ]}>
+      <ThemedText type="defaultSemiBold" style={{ color: active ? theme.background : theme.textSecondary }}>
+        {label}
+      </ThemedText>
     </Pressable>
   );
 }
@@ -339,42 +412,51 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.four,
     gap: Spacing.three,
+    alignItems: 'center',
   },
-  previewRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    alignItems: 'flex-start',
+  previewWrap: {
+    borderRadius: Radius.small,
   },
   previewPage: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderColor: '#808080',
-    borderWidth: 1,
-    borderRadius: 2,
+    borderRadius: Radius.small,
     overflow: 'hidden',
   },
+  caption: {
+    textAlign: 'center',
+  },
   controlCard: {
-    borderRadius: Radius.medium,
-    borderWidth: 1,
+    width: '100%',
     padding: Spacing.three,
     gap: Spacing.three,
   },
-  stepperRow: {
+  readoutRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  chipRow: {
     flexDirection: 'row',
     gap: Spacing.two,
   },
   columnChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // AppButton's `style` prop lands on its outer (shadow) wrapper, not the
+  // Pressable that actually sizes itself from padding — so only
+  // layout props (width, margin, position) can be overridden per
+  // instance here, not an explicit height.
   exportButton: {
+    width: '100%',
     marginTop: Spacing.one,
   },
 });

@@ -30,6 +30,14 @@ export interface PackOptions {
   verticalGutter: number;
   /** Number of columns (plan §5: 2 / 3 / 4 / 6, or a computed auto-fit). */
   columns: number;
+  /**
+   * Extra height reserved directly below each item, in points — room for a
+   * caption drawn by a caller (this module has no PDF/text knowledge of its
+   * own). Defaults to 0, so existing callers are unaffected. An oversize
+   * item is clamped to leave this much room too, so its own caption still
+   * fits below it.
+   */
+  captionSpace?: number;
 }
 
 /** One thing being packed: natural size in points. */
@@ -83,7 +91,7 @@ export function packColumns(
 ): PackResult {
   validateOptions(options);
 
-  const { pageSize, margin, gutter, verticalGutter, columns } = options;
+  const { pageSize, margin, gutter, verticalGutter, columns, captionSpace = 0 } = options;
   const printableH = pageSize.height - 2 * margin;
   const columnWidth = columnWidthOf(options);
   const topOfColumn = pageSize.height - margin;
@@ -99,16 +107,25 @@ export function packColumns(
     let width = columnWidth;
     let height = item.naturalHeight * scale;
 
-    // Item taller than the printable area: clamp to the full height.
-    if (height > printableH) {
-      scale = printableH / item.naturalHeight;
+    // Item taller than the printable area (less any reserved caption
+    // space): clamp so its own caption still has room below it.
+    if (height > printableH - captionSpace) {
+      scale = (printableH - captionSpace) / item.naturalHeight;
       width = item.naturalWidth * scale;
-      height = printableH;
+      height = printableH - captionSpace;
     }
 
-    const gutterBefore = usedH > 0 ? verticalGutter : 0;
-    if (usedH + gutterBefore + height > printableH) {
-      // Move to the next column; if none remain, emit the page.
+    let gutterBefore = usedH > 0 ? verticalGutter : 0;
+    // The block an item occupies includes its reserved caption band, which
+    // sits directly below the image itself.
+    const block = height + captionSpace;
+    if (usedH + gutterBefore + block > printableH) {
+      // Move to the next column; if none remain, emit the page. The first
+      // item of a new column starts at the top with no leading gutter —
+      // `gutterBefore` was computed against the *previous* column's usedH
+      // and must be reset here, or it both drops this item and every
+      // column after the first by `verticalGutter` and over-counts usedH
+      // by the same amount.
       column += 1;
       if (column >= columns) {
         pages.push({ items: page });
@@ -116,6 +133,7 @@ export function packColumns(
         column = 0;
       }
       usedH = 0;
+      gutterBefore = 0;
     }
 
     const itemTop = topOfColumn - usedH - gutterBefore;
@@ -123,7 +141,7 @@ export function packColumns(
     const x = columnX + (columnWidth - width) / 2;
 
     page.push({ id: item.id, x, y: itemTop - height, width, height, scale });
-    usedH += gutterBefore + height;
+    usedH += gutterBefore + block;
     minScale = Math.min(minScale, scale);
   }
 
