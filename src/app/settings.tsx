@@ -12,7 +12,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, useColorScheme, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
@@ -22,7 +22,6 @@ import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
-    CardShadow,
     MaxContentWidth,
     PALETTE_NAMES,
     PaletteId,
@@ -34,21 +33,15 @@ import {
     type ThemeColors,
 } from '@/constants/theme';
 import { useThemePreferences } from '@/hooks/theme-provider';
-import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
 import { createAndShareBackup } from '@/lib/backup';
 import { DATABASE_NAME } from '@/lib/db/migrations';
-import { generateId } from '@/lib/db/persist-scan';
 import {
-    deleteRecipient,
-    fetchRecipients,
     getSetting,
-    saveRecipient,
     SCAN_MULTI_PAGE_KEY,
     SCAN_NAME_PREFIX_KEY,
     SCAN_QUALITY_KEY,
     setSetting,
-    type RecipientRow,
 } from '@/lib/db/queries';
 import { exportAndShareLog, logInfo, logThrown } from '@/lib/debug-log';
 import { FILENAME_TEMPLATE_KEY } from '@/lib/pdf/filename';
@@ -123,9 +116,6 @@ export default function SettingsScreen() {
   // "unset" (the placeholder shows the default).
   const [template, setTemplate] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState(false);
-  // Saved recipients (Phase 7), most recently used first.
-  const [recipients, setRecipients] = useState<RecipientRow[]>([]);
-  const [addingRecipient, setAddingRecipient] = useState(false);
   // Backup + diagnostic-log busy flags.
   const [backingUp, setBackingUp] = useState(false);
   const [exportingLog, setExportingLog] = useState(false);
@@ -133,20 +123,18 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       (async () => {
-        const [storedPrefix, storedMultiPage, storedQuality, storedTemplate, storedRecipients] =
+        const [storedPrefix, storedMultiPage, storedQuality, storedTemplate] =
           await Promise.all([
             getSetting(db, SCAN_NAME_PREFIX_KEY),
             getSetting(db, SCAN_MULTI_PAGE_KEY),
             getSetting(db, SCAN_QUALITY_KEY),
             getSetting(db, FILENAME_TEMPLATE_KEY),
-            fetchRecipients(db),
           ]);
         setPrefix(storedPrefix);
         setMultiPage(storedMultiPage !== 'false');
         setQuality(storedQuality == null ? DEFAULT_QUALITY : Number(storedQuality));
         setTemplate(storedTemplate);
-        setRecipients(storedRecipients);
-      })();
+      })().catch((e: unknown) => logThrown('settings-load', e));
     }, [db]),
   );
 
@@ -172,37 +160,6 @@ export default function SettingsScreen() {
     setEditingTemplate(false);
     await setSetting(db, FILENAME_TEMPLATE_KEY, value);
     setTemplate(value);
-  }
-
-  /* ---------------- Recipients (Phase 7) ---------------- */
-
-  async function onSaveRecipient(label: string, email: string, phone: string) {
-    setAddingRecipient(false);
-    const trimmed = label.trim();
-    if (trimmed.length === 0) {
-      return;
-    }
-    await saveRecipient(db, {
-      id: generateId(),
-      label: trimmed,
-      email: email.trim().length > 0 ? email.trim() : null,
-      phone: phone.trim().length > 0 ? phone.trim() : null,
-    });
-    setRecipients(await fetchRecipients(db));
-  }
-
-  function onDeleteRecipient(recipient: RecipientRow) {
-    Alert.alert('Remove recipient', `Remove "${recipient.label}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteRecipient(db, recipient.id);
-          setRecipients(await fetchRecipients(db));
-        },
-      },
-    ]);
   }
 
   /* ---------------- Backup & diagnostics ---------------- */
@@ -233,7 +190,7 @@ export default function SettingsScreen() {
       await exportAndShareLog();
     } catch (e: unknown) {
       logThrown('debug-log', e);
-      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+      Alert.alert('Send failed', e instanceof Error ? e.message : String(e));
     } finally {
       setExportingLog(false);
     }
@@ -351,58 +308,6 @@ export default function SettingsScreen() {
             </SettingsRow>
           </AppCard>
 
-          {/* Recipients (Phase 7) */}
-          <AppCard style={styles.card}>
-            <ThemedText type="label" style={[styles.cardLabel, { color: theme.textSecondary }]}>
-              Sharing
-            </ThemedText>
-            {recipients.length === 0 ? (
-              <SettingsRow last>
-                <View style={styles.rowText}>
-                  <ThemedText type="defaultSemiBold">Saved recipients</ThemedText>
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    People you share with often, saved here so the OS share sheet is one tap shorter next time.
-                  </ThemedText>
-                </View>
-                <AppButton label="Add" variant="outline" onPress={() => setAddingRecipient(true)} />
-              </SettingsRow>
-            ) : (
-              <>
-                {recipients.map((recipient, index) => (
-                  <SettingsRow key={recipient.id} last={index === recipients.length - 1}>
-                    <View style={styles.rowText}>
-                      <ThemedText type="defaultSemiBold" numberOfLines={1}>
-                        {recipient.label}
-                      </ThemedText>
-                      {/* "email · phone" with only the parts that exist — a
-                          person can have either, both, or (transiently)
-                          neither if a merge kept the label. */}
-                      {(recipient.email != null || recipient.phone != null) && (
-                        <ThemedText type="small" style={{ color: theme.textSecondary }} numberOfLines={1}>
-                          {[recipient.email, recipient.phone].filter((part) => part != null && part !== '').join(' · ')}
-                        </ThemedText>
-                      )}
-                    </View>
-                    <Pressable
-                      onPress={() => onDeleteRecipient(recipient)}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Remove recipient ${recipient.label}`}>
-                      <SymbolView
-                        name={{ ios: 'trash', android: 'delete' }}
-                        size={18}
-                        tintColor={theme.danger}
-                      />
-                    </Pressable>
-                  </SettingsRow>
-                ))}
-                <View style={styles.qualityRow}>
-                  <AppButton label="Add recipient" variant="outline" onPress={() => setAddingRecipient(true)} />
-                </View>
-              </>
-            )}
-          </AppCard>
-
           {/* Backup & diagnostics (plan §9) */}
           <AppCard style={styles.card}>
             <ThemedText type="label" style={[styles.cardLabel, { color: theme.textSecondary }]}>
@@ -491,104 +396,7 @@ export default function SettingsScreen() {
         onConfirm={saveTemplate}
         onCancel={() => setEditingTemplate(false)}
       />
-
-      <AddRecipientDialog
-        visible={addingRecipient}
-        onSave={(label, email, phone) => void onSaveRecipient(label, email, phone)}
-        onCancel={() => setAddingRecipient(false)}
-      />
     </ThemedView>
-  );
-}
-
-/** Props for {@link AddRecipientDialog}. */
-interface AddRecipientDialogProps {
-  visible: boolean;
-  onSave: (label: string, email: string, phone: string) => void;
-  onCancel: () => void;
-}
-
-/**
- * Three-field dialog for a new saved recipient: a label (required) plus
- * an optional email and phone — one record per person, so both channels
- * live on the same row. `PromptDialog` is single-field; this is its own
- * small modal in the same visual language.
- */
-function AddRecipientDialog({ visible, onSave, onCancel }: AddRecipientDialogProps) {
-  const theme = useTheme();
-  const [label, setLabel] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-
-  useResetOnOpen(visible, () => {
-    setLabel('');
-    setEmail('');
-    setPhone('');
-  });
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={styles.backdrop} onPress={onCancel}>
-        <Pressable
-          style={[styles.dialogCard, CardShadow(theme.shadow), { backgroundColor: theme.background }]}
-          onPress={(e) => e.stopPropagation()}>
-          <ThemedText type="subtitle">Add recipient</ThemedText>
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            A person you send PDFs to. Fill either channel — or both — you can send either way later.
-          </ThemedText>
-          <TextInput
-            style={[
-              styles.dialogInput,
-              { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
-            ]}
-            value={label}
-            onChangeText={setLabel}
-            placeholder="Label (e.g. Accountant)"
-            placeholderTextColor={theme.textSecondary}
-            autoFocus
-            autoCorrect={false}
-            underlineColorAndroid="transparent"
-            returnKeyType="next"
-          />
-          <TextInput
-            style={[
-              styles.dialogInput,
-              { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
-            ]}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Email (optional)"
-            placeholderTextColor={theme.textSecondary}
-            keyboardType="email-address"
-            autoCorrect={false}
-            underlineColorAndroid="transparent"
-            returnKeyType="next"
-          />
-          <TextInput
-            style={[
-              styles.dialogInput,
-              { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
-            ]}
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="Phone, for texts (optional)"
-            placeholderTextColor={theme.textSecondary}
-            keyboardType="phone-pad"
-            autoCorrect={false}
-            underlineColorAndroid="transparent"
-            returnKeyType="done"
-          />
-          <View style={styles.dialogActions}>
-            <AppButton label="Cancel" variant="outline" onPress={onCancel} />
-            <AppButton
-              label="Save"
-              disabled={label.trim().length === 0}
-              onPress={() => onSave(label, email, phone)}
-            />
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
   );
 }
 
@@ -765,6 +573,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.two,
   },
+  grow: {
+    flex: 1,
+  },
   paletteTrailing: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -781,30 +592,5 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
-  },
-  backdrop: {
-    flex: 1,
-    backgroundColor: '#000000AA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.four,
-  },
-  dialogCard: {
-    borderRadius: Radius.large,
-    padding: Spacing.four,
-    width: '100%',
-    maxWidth: 420,
-    gap: Spacing.three,
-  },
-  dialogInput: {
-    borderWidth: 1,
-    borderRadius: Radius.medium,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-  },
-  dialogActions: {
-    flexDirection: 'row',
-    gap: Spacing.two,
   },
 });

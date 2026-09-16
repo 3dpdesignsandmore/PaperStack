@@ -27,6 +27,13 @@ export interface CaptureDialogState {
   onSaveAsNew: () => void;
   onAppend: (target: LibraryEntry) => void;
   onCancel: () => void;
+  /** A save is writing — the dialog's actions disable while true. */
+  saving: boolean;
+  /** "Save each as separate document" is available — only when the
+   * session has more than one page (with one page it's meaningless).
+   * The dialog reads it to show/hide the option. */
+  canSplitDocuments: boolean;
+  onSaveSeparate: () => void;
 }
 
 /** Return value of {@link useSaveFlow}. */
@@ -47,6 +54,9 @@ export function useSaveFlow(): UseSaveFlowResult {
   const [pendingUris, setPendingUris] = useState<string[] | null>(null);
   const [recentDocs, setRecentDocs] = useState<LibraryEntry[]>([]);
   const [saveName, setSaveName] = useState('');
+  // True while a save action is writing — the dialog disables its
+  // actions so a slow save can't be double-tapped.
+  const [saving, setSaving] = useState(false);
   const resolveRef = useRef<((documentId: string | null) => void) | null>(null);
   // Persist options for the pending session — read once in `startSave`
   // (alongside the other settings), not re-read per save action; the save
@@ -77,7 +87,7 @@ export function useSaveFlow(): UseSaveFlowResult {
   }
 
   async function onSaveAsNew() {
-    if (pendingUris == null) {
+    if (pendingUris == null || saving) {
       return;
     }
     const title = saveName.trim();
@@ -86,13 +96,55 @@ export function useSaveFlow(): UseSaveFlowResult {
     }
     const uris = pendingUris;
     const persistOptions = persistOptionsRef.current;
+    setSaving(true);
     try {
       const doc = await persistScanSession(db, uris, title, DocumentKind.Document, persistOptions);
+      setSaving(false);
       settle(doc.id);
     } catch (e: unknown) {
+      setSaving(false);
       const message = e instanceof Error ? e.message : String(e);
       Alert.alert('Save failed', message);
       settle(null);
+    }
+  }
+
+  /** Save each pending page as its own document — the user's name gets a
+   * numeric suffix on every page after the first. Resolves the session
+   * as "stay where you were" (null): there is no single document to
+   * land on, and the count confirmation below is the feedback. */
+  async function onSaveSeparate() {
+    if (pendingUris == null || pendingUris.length < 2 || saving) {
+      return;
+    }
+    const base = saveName.trim();
+    if (base.length === 0) {
+      return;
+    }
+    const uris = [...pendingUris];
+    const persistOptions = persistOptionsRef.current;
+    setSaving(true);
+    let saved = 0;
+    try {
+      // Sequential by convention (read-modify-write of the same tables).
+      for (let index = 0; index < uris.length; index++) {
+        const title = index === 0 ? base : `${base} (${index + 1})`;
+        await persistScanSession(db, [uris[index]], title, DocumentKind.Document, persistOptions);
+        saved++;
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert(
+        'Save failed',
+        saved > 0
+          ? `Saved ${saved} of ${uris.length} before failing: ${message}`
+          : message,
+      );
+    }
+    setSaving(false);
+    settle(null);
+    if (saved > 0) {
+      Alert.alert('Saved', `Saved ${saved} document${saved === 1 ? '' : 's'} to your library.`);
     }
   }
 
@@ -120,7 +172,10 @@ export function useSaveFlow(): UseSaveFlowResult {
       name: saveName,
       onChangeName: setSaveName,
       recentDocs,
+      saving,
       onSaveAsNew,
+      onSaveSeparate,
+      canSplitDocuments: (pendingUris?.length ?? 0) > 1,
       onAppend,
       onCancel: () => settle(null),
     },

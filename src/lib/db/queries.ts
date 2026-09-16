@@ -292,6 +292,9 @@ export interface RecipientRow {
   id: string;
   label: string;
   email: string | null;
+  /** A second email — e.g. home vs work. Chosen explicitly at send
+   * time when set alongside `email`; never a silent fallback. */
+  email2: string | null;
   phone: string | null;
   lastUsedAt: number;
 }
@@ -299,20 +302,25 @@ export interface RecipientRow {
 /** All recipients, most recently used first. */
 export async function fetchRecipients(db: SQLiteDatabase): Promise<RecipientRow[]> {
   return db.getAllAsync<RecipientRow>(
-    'SELECT id, label, email, phone, last_used_at AS lastUsedAt FROM recipients ORDER BY last_used_at DESC, label COLLATE NOCASE',
+    'SELECT id, label, email, email_2 AS email2, phone, last_used_at AS lastUsedAt FROM recipients ORDER BY last_used_at DESC, label COLLATE NOCASE',
   );
 }
 
-/** Save (insert or update) a recipient. */
+/**
+ * Save (insert or update) a recipient. Takes the full row including
+ * `lastUsedAt` — the caller owns recency, because merges persist
+ * `max(target, source)` and a fresh record is explicitly `0`.
+ */
 export async function saveRecipient(
   db: SQLiteDatabase,
-  recipient: Omit<RecipientRow, 'lastUsedAt'>,
+  recipient: RecipientRow,
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO recipients (id, label, email, phone, last_used_at)
-     VALUES (?, ?, ?, ?, 0)
-     ON CONFLICT(id) DO UPDATE SET label = excluded.label, email = excluded.email, phone = excluded.phone`,
-    [recipient.id, recipient.label, recipient.email, recipient.phone],
+    `INSERT INTO recipients (id, label, email, email_2, phone, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET label = excluded.label, email = excluded.email,
+       email_2 = excluded.email_2, phone = excluded.phone, last_used_at = excluded.last_used_at`,
+    [recipient.id, recipient.label, recipient.email, recipient.email2, recipient.phone, recipient.lastUsedAt],
   );
 }
 

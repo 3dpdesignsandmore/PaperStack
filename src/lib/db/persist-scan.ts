@@ -18,6 +18,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { logInfo } from '@/lib/debug-log';
 import type { DocumentKind, ScanDocument } from '@/lib/model';
 
 /** Long-edge pixel cap for stored scans (plan §9 storage budget). */
@@ -170,6 +171,15 @@ export async function persistScanSession(
         ],
       );
     }
+
+    // Post-write verification: the "saved but not showing" report needs
+    // the log to distinguish "rows missing" (write path) from "query not
+    // refreshing" (read path) — count what the DB actually holds.
+    const stored = await db.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM scan_documents WHERE id = ?',
+      [docId],
+    );
+    logInfo('persist', `document ${docId} "${title}": ${pages.length} page(s), ${stored?.count ?? 0} row(s) in DB`);
 
     return { id: docId, title, kind, createdAt: now, updatedAt: now };
   } catch (e: unknown) {

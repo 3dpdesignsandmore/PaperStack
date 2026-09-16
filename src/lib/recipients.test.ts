@@ -1,22 +1,32 @@
 /**
  * Unit tests for the one-record-per-person merge in
  * `upsertRecipientByChannel` — the "email Jeff today, text him later"
- * rule — plus `channelsOf`. The merge lives in `recipient-merge.ts`
- * (pure: no react-native import, so Vitest can run it); only
- * `fetchRecipients`/`saveRecipient` are mocked.
+ * rule — plus `channelsOf`, the pairwise `mergeTwoRecords` union and
+ * its `applyMergeTwo` commit, and `channelSummary`. The merge logic
+ * lives in `recipient-merge.ts` (pure: no react-native import, so
+ * Vitest can run it); only the `queries` module is mocked.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchRecipients, saveRecipient, type RecipientRow } from '@/lib/db/queries';
+import {
+    deleteRecipient,
+    fetchRecipients,
+    saveRecipient,
+    type RecipientRow,
+} from '@/lib/db/queries';
 import {
     RecipientChannel,
+    applyMergeTwo,
+    channelSummary,
     channelsOf,
+    mergeTwoRecords,
     upsertRecipientByChannel,
 } from './recipient-merge';
 
 vi.mock('@/lib/db/queries', () => ({
   fetchRecipients: vi.fn(),
   saveRecipient: vi.fn(),
+  deleteRecipient: vi.fn(),
 }));
 
 /** Build a row with defaults. */
@@ -25,15 +35,20 @@ function row(overrides: Partial<RecipientRow>): RecipientRow {
     id: 'r1',
     label: 'Jeff',
     email: null,
+    email2: null,
     phone: null,
     lastUsedAt: 0,
     ...overrides,
   };
 }
 
-/** The fake db handle — sending it anywhere is fine; only the mocked
- * module's functions are called. */
-const fakeDb = {} as never;
+/** The fake db handle — `withTransactionAsync` just runs its callback
+ * (the mocked queries it calls are what the assertions look at). */
+const fakeDb = {
+  withTransactionAsync: async (work: () => Promise<void>) => {
+    await work();
+  },
+} as never;
 
 /** Deterministic id factory for assertions. */
 const genId = (() => {
@@ -45,6 +60,7 @@ describe('upsertRecipientByChannel', () => {
   beforeEach(() => {
     vi.mocked(fetchRecipients).mockReset();
     vi.mocked(saveRecipient).mockReset();
+    vi.mocked(deleteRecipient).mockReset();
   });
 
   it('reuses the record when the exact email already exists', async () => {
@@ -168,5 +184,105 @@ describe('channelsOf', () => {
     ]);
     expect(channelsOf(row({ email: 'a@b.c' }))).toEqual([RecipientChannel.Email]);
     expect(channelsOf(row({ phone: '555' }))).toEqual([RecipientChannel.Text]);
+  });
+});
+
+describe('mergeTwoRecords', () => {
+  it('unions both records: unset fields on the kept record are filled from the dropped one', () => {
+    const kept = row({ id: 'keep', label: 'Jeff', email: 'jeff@example.com', phone: null, lastUsedAt: 100 });
+    const dropped = row({ id: 'drop', label: 'Jeff Smith', email: null, phone: '555-0100', lastUsedAt: 50 });
+
+    const result = mergeTwoRecords(kept, dropped);
+
+    expect(result.merged.id).toBe('keep');
+    expect(result.merged.email).toBe('jeff@example.com');
+    expect(result.merged.phone).toBe('555-0100');
+    expect(result.merged.lastUsedAt).toBe(100);
+    expect(result.droppedId).toBe('drop');
+    expect(result.conflicts).toEqual([]);
+  });
+
+  it('keeps both distinct emails — the home + work case — instead of a conflict', () => {
+    const kept = row({ id: 'keep', label: 'Jeff', email: 'jeff@home.example' });
+    const dropped = row({ id: 'drop', label: 'Jefferson', email: 'js@example.com' });
+
+    const result = mergeTwoRecords(kept, dropped);
+
+    expect(result.merged.email).toBe('jeff@home.example');
+    expect(result.merged.email2).toBe('js@example.com');
+    expect(result.conflicts).toEqual([]);
+  });
+
+  it('conflicts on a third distinct email that does not fit either slot', () => {
+    const kept = row({
+      id: 'keep',
+      label: 'Jeff',
+      email: 'jeff@home.example',
+      email2: 'jsmith@work.example',
+    });
+    const dropped = row({ id: 'drop', label: 'Jefferson', email: 'jeff93@example.com' });
+
+    const result = mergeTwoRecords(kept, dropped);
+
+    expect(result.merged.email).toBe('jeff@home.example');
+    expect(result.merged.email2).toBe('jsmith@work.example');
+    expect(result.conflicts).toEqual([
+      { field: 'email2', kept: 'jsmith@work.example', dropped: 'jeff93@example.com' },
+    ]);
+  });
+
+  it('treats digit-equivalent phones as no conflict', () => {
+    const kept = row({ id: 'keep', label: 'Jeff', phone: '(555) 010-0000' });
+    const dropped = row({ id: 'drop', label: 'Jefferson', phone: '5550100000' });
+
+    const result = mergeTwoRecords(kept, dropped);
+
+    expect(result.conflicts).toEqual([]);
+    // The kept record's formatting wins on equivalence.
+    expect(result.merged.phone).toBe('(555) 010-0000');
+  });
+
+  it('reports a conflict when phones differ beyond formatting', () => {
+    const kept = row({ id: 'keep', label: 'Jeff', phone: '555-0100' });
+    const dropped = row({ id: 'drop', label: 'Jefferson', phone: '555-9999' });
+
+    const result = mergeTwoRecords(kept, dropped);
+
+    expect(result.conflicts).toEqual([
+      { field: 'phone', kept: '555-0100', dropped: '555-9999' },
+    ]);
+  });
+
+  it('does not error when both records are empty of channels', () => {
+    const kept = row({ id: 'keep', label: 'Jeff' });
+    const dropped = row({ id: 'drop', label: 'Jefferson' });
+
+    const result = mergeTwoRecords(kept, dropped);
+
+    expect(result.merged.email).toBeNull();
+    expect(result.merged.phone).toBeNull();
+    expect(result.conflicts).toEqual([]);
+  });
+});
+
+describe('applyMergeTwo', () => {
+  it('persists the merged row and deletes the dropped record', async () => {
+    vi.mocked(saveRecipient).mockReset();
+    const kept = row({ id: 'keep', label: 'Jeff', email: 'jeff@example.com' });
+    const dropped = row({ id: 'drop', label: 'Jefferson', phone: '555-0100' });
+    const result = mergeTwoRecords(kept, dropped);
+
+    await applyMergeTwo(fakeDb, result);
+
+    expect(deleteRecipient).toHaveBeenCalledWith(fakeDb, 'drop');
+    expect(saveRecipient).toHaveBeenCalledWith(fakeDb, result.merged);
+  });
+});
+
+describe('channelSummary', () => {
+  it('joins only set values', () => {
+    expect(channelSummary(row({ email: 'a@b.c', phone: '555' }))).toBe('a@b.c · 555');
+    expect(channelSummary(row({ email: 'a@b.c' }))).toBe('a@b.c');
+    expect(channelSummary(row({}))).toBe('');
   });
 });

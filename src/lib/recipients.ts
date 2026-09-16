@@ -16,17 +16,27 @@
  * Why not `expo-sms`: it is a native module (rebuild) and its
  * sendSMSAsync requires user consent per send anyway — Linking gives
  * the same handoff with zero new native surface.
+ *
+ * `expo-mail-composer` is loaded dynamically inside the email path,
+ * same reasoning as `scanner.ts`: its native module ships with the
+ * next dev build, and a static import would crash every route that
+ * touches this module on binaries built before it existed. The import
+ * is ALSO gated on `requireOptionalNativeModule('ExpoMailComposer')`:
+ * the package resolves its native module at module scope, so on a
+ * stale binary the throw happens inside Metro's loader and is logged
+ * as an ERROR even though the rejection is caught below — checking
+ * first keeps old binaries quiet instead of redboxing the console.
  */
-import * as MailComposer from 'expo-mail-composer';
 import { Linking } from 'react-native';
 
+import { requireOptionalNativeModule } from 'expo';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { generateId } from '@/lib/db/persist-scan';
 import { touchRecipient, type RecipientRow } from '@/lib/db/queries';
 import { RecipientChannel, upsertRecipientByChannel } from '@/lib/recipient-merge';
 
-export { channelsOf, RecipientChannel } from '@/lib/recipient-merge';
+export { channelSummary, channelsOf, RecipientChannel } from '@/lib/recipient-merge';
 
 /**
  * The app-facing merge with the real id generator bound in (the pure
@@ -49,6 +59,10 @@ export interface SendOptions {
   subject: string;
   /** A short body for email sends. */
   body?: string;
+  /** Which of the recipient's two email slots to send to, when both are
+   * set — callers must pick (e.g. ask home vs work); the primary is the
+   * default when unset. */
+  emailSlot?: 1 | 2;
 }
 
 /** Result of the send interaction. */
@@ -69,20 +83,63 @@ export async function sendToRecipient(
   options: SendOptions,
 ): Promise<SendOutcome> {
   if (channel === RecipientChannel.Email) {
-    if (recipient.email == null || recipient.email === '') {
+    const address =
+      options.emailSlot === 2
+        ? recipient.email2 ?? recipient.email
+        : recipient.email;
+    if (address == null || address === '') {
       return { status: 'unavailable', reason: 'This recipient has no email address saved.' };
     }
-    const canMail = await MailComposer.isAvailableAsync();
+    // Gate the import on the native side being present. The package
+    // resolves `requireNativeModule('ExpoMailComposer')` at module
+    // scope, so on a binary predating it the dynamic import below
+    // throws inside Metro's loader — the catch below handles the
+    // rejection, but Metro still logs the throw as an ERROR. Asking
+    // the runtime directly returns null on stale binaries, skipping
+    // the import (and the console noise) entirely.
+    if (requireOptionalNativeModule('ExpoMailComposer') == null) {
+      return {
+        status: 'unavailable',
+        reason: 'Email sending needs a newer app build (mail module unavailable). Text sending and the OS share sheet still work.',
+      };
+    }
+    let mail: typeof import('expo-mail-composer');
+    try {
+      // Metro's CJS interop can hand back either the module namespace or
+      // a `{ default: namespace }` wrapper (see `scanner.ts`, which hits
+      // the same thing with its CJS package) — unwrap whichever arrives,
+      // then verify the API is actually there before calling it.
+      const loaded: unknown = await import('expo-mail-composer');
+      const candidate =
+        typeof (loaded as { default?: unknown }).default === 'object' &&
+        (loaded as { default?: { isAvailableAsync?: unknown } }).default != null
+          ? (loaded as { default: typeof import('expo-mail-composer') }).default
+          : (loaded as typeof import('expo-mail-composer'));
+      if (typeof candidate.isAvailableAsync !== 'function') {
+        return {
+          status: 'unavailable',
+          reason: 'Email sending needs a newer app build (mail module unavailable). Text sending and the OS share sheet still work.',
+        };
+      }
+      mail = candidate;
+    } catch (e: unknown) {
+      const detail = e instanceof Error ? e.message : String(e);
+      return {
+        status: 'unavailable',
+        reason: `Email sending needs a newer app build (${detail}). Text sending and the OS share sheet still work.`,
+      };
+    }
+    const canMail = await mail.isAvailableAsync();
     if (!canMail) {
       return { status: 'unavailable', reason: 'No email account is set up on this device.' };
     }
-    const result = await MailComposer.composeAsync({
-      recipients: [recipient.email],
+    const result = await mail.composeAsync({
+      recipients: [address],
       subject: options.subject,
       body: options.body ?? '',
       attachments: [options.fileUri],
     });
-    return result.status === MailComposer.MailComposerStatus.SENT
+    return result.status === mail.MailComposerStatus.SENT
       ? { status: 'sent', recipient }
       : { status: 'cancelled', recipient };
   }

@@ -12,7 +12,6 @@
  * one per page, with a legibility guard surfaced before export.
  */
 import { Directory, File, Paths } from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
@@ -36,6 +35,8 @@ export interface ComposeOptions {
   separators: boolean;
   /** Print titles under items. */
   captions: boolean;
+  /** Cap on items per column; 1 with `columns: 1` is one scan per page. */
+  maxPerColumn?: number;
 }
 
 /** Default §5 geometry shared with the preview. */
@@ -108,9 +109,10 @@ export function composeLayout(
   pages: ScanPage[],
   columns: number,
   captions: boolean,
+  maxPerColumn?: number,
 ): { pages: PackedPage[]; minScale: number } {
   const captionSpace = captions ? CAPTION_HEIGHT : 0;
-  const result = packColumns(pagesToPackItems(pages), { ...COMPOSE_GEO, columns, captionSpace });
+  const result = packColumns(pagesToPackItems(pages), { ...COMPOSE_GEO, columns, captionSpace, maxPerColumn });
   return { pages: result.pages, minScale: result.minScale };
 }
 
@@ -129,7 +131,7 @@ export async function buildStackedPdf(
   pages: ScanPage[],
   options: ComposeOptions,
 ): Promise<Uint8Array> {
-  const { pages: stackedPages } = composeLayout(pages, options.columns, options.captions);
+  const { pages: stackedPages } = composeLayout(pages, options.columns, options.captions, options.maxPerColumn);
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(combinedTitle(documents));
@@ -189,13 +191,17 @@ export async function buildStackedPdf(
 }
 
 /**
- * Export and share the stacked composition for a set of documents' pages
- * (one document, or several combined). Sequential by design (write then
- * share); writes into documents/exports/compositions/. The file name
- * expands through the user's filename template (Phase 7) — for a
- * composition `{n}` is the sheet count, not the page count.
+ * Export the stacked composition for a set of documents' pages (one
+ * document, or several combined) and return its URI. Sequential by
+ * design (PDF build, then write); writes into
+ * documents/exports/compositions/. Does NOT open the OS share sheet —
+ * the caller's send sheet owns the handoff (see `exportDocument` for
+ * the history).
+ *
+ * The file name expands through the user's filename template (Phase 7)
+ * — for a composition `{n}` is the sheet count, not the page count.
  */
-export async function exportAndShareComposition(
+export async function exportComposition(
   db: SQLiteDatabase,
   documents: ScanDocument[],
   pages: ScanPage[],
@@ -207,7 +213,7 @@ export async function exportAndShareComposition(
 
   const bytes = await buildStackedPdf(documents, pages, options);
   const title = combinedTitle(documents);
-  const sheetCount = composeLayout(pages, options.columns, options.captions).pages.length;
+  const sheetCount = composeLayout(pages, options.columns, options.captions, options.maxPerColumn).pages.length;
   const template = await getSetting(db, FILENAME_TEMPLATE_KEY);
   const fileName = resolveExportFilename(template, title, pages.length, sheetCount, sanitizeTitle);
 
@@ -220,15 +226,6 @@ export async function exportAndShareComposition(
     file.delete();
   }
   file.write(bytes);
-
-  if (!(await Sharing.isAvailableAsync())) {
-    throw new Error('Sharing is not available on this device');
-  }
-  await Sharing.shareAsync(file.uri, {
-    mimeType: 'application/pdf',
-    dialogTitle: combinedTitle(documents),
-    UTI: 'com.adobe.pdf',
-  });
 
   return {
     uri: file.uri,

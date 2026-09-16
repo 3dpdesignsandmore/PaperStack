@@ -11,7 +11,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -24,6 +24,7 @@ import { BottomTabInset, glowShadow, MaxContentWidth, Radius, Spacing } from '@/
 import { useCapture } from '@/hooks/use-capture';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
+import { logThrown } from '@/lib/debug-log';
 import { fetchLibrary } from '@/lib/db/queries';
 import type { LibraryEntry } from '@/lib/model';
 import { SCAN_DIR_NAME } from '@/lib/db/persist-scan';
@@ -50,7 +51,9 @@ export default function HomeScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
   const router = useRouter();
-  const { capture, dialog } = useCapture();
+  // The scan dialog still mounts here (the flow can be triggered while
+  // Home is focused); the tile itself now routes to the recipients page.
+  const { dialog } = useCapture();
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
   const [usedBytes, setUsedBytes] = useState<number | null>(null);
   // Tracks the document count `usedBytes` was last computed for, so a plain
@@ -75,16 +78,9 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      load().catch((e: unknown) => logThrown('home-load', e));
     }, [load]),
   );
-
-  async function onScan() {
-    const documentId = await capture();
-    if (documentId != null) {
-      router.push(`/document/${documentId}`);
-    }
-  }
 
   const recent = entries?.slice(0, RECENT_COUNT) ?? [];
   const isEmpty = entries != null && entries.length === 0;
@@ -114,15 +110,16 @@ export default function HomeScreen() {
 
           <ThemedView style={styles.tileRow}>
             <ActionTile
-              icon={{ ios: 'camera.viewfinder', android: 'document_scanner' }}
-              label="Scan"
+              icon={{ ios: 'person.2', android: 'group' }}
+              label="View recipients"
               accent
-              onPress={onScan}
+              onPress={() => router.push('/recipients')}
             />
             <ActionTile
-              icon={{ ios: 'square.stack', android: 'layers' }}
-              label="Combine documents"
-              onPress={() => router.push({ pathname: '/library', params: { select: 'combine' } })}
+              icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }}
+              label="Send"
+              detail="One scan per page, or combined"
+              onPress={() => router.push('/library')}
             />
           </ThemedView>
 
@@ -187,12 +184,14 @@ export default function HomeScreen() {
 interface ActionTileProps {
   icon: SymbolViewProps['name'];
   label: string;
+  /** Optional smaller line under the tile title. */
+  detail?: string;
   accent?: boolean;
   onPress: () => void;
 }
 
 /** One of Home's two primary action tiles. */
-function ActionTile({ icon, label, accent = false, onPress }: ActionTileProps) {
+function ActionTile({ icon, label, detail, accent = false, onPress }: ActionTileProps) {
   const theme = useTheme();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
   const glow = accent ? glowShadow(theme.accent) : null;
@@ -206,9 +205,16 @@ function ActionTile({ icon, label, accent = false, onPress }: ActionTileProps) {
         style={styles.tilePressable}>
         <AppCard style={[styles.tileCard, accent && { backgroundColor: theme.accent }]}>
           <SymbolView name={icon} size={26} tintColor={accent ? theme.accentText : theme.text} />
-          <ThemedText type="defaultSemiBold" style={{ color: accent ? theme.accentText : theme.text }}>
-            {label}
-          </ThemedText>
+          <View style={styles.tileText}>
+            <ThemedText type="defaultSemiBold" style={{ color: accent ? theme.accentText : theme.text }}>
+              {label}
+            </ThemedText>
+            {detail != null && (
+              <ThemedText type="small" style={{ color: accent ? theme.accentText : theme.textSecondary }}>
+                {detail}
+              </ThemedText>
+            )}
+          </View>
         </AppCard>
       </Pressable>
     </Animated.View>
@@ -255,6 +261,9 @@ const styles = StyleSheet.create({
     aspectRatio: 1.15,
     padding: Spacing.three,
     justifyContent: 'space-between',
+  },
+  tileText: {
+    gap: Spacing.one,
   },
   section: {
     gap: Spacing.two,

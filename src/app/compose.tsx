@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
 import { CenteredMessage } from '@/components/centered-message';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { LegibilityMeter } from '@/components/legibility-meter';
 import { ScreenHeader } from '@/components/screen-header';
 import { SendSheet } from '@/components/send-sheet';
@@ -39,7 +40,7 @@ import {
     combinedTitle,
     COMPOSE_GEO,
     composeLayout,
-    exportAndShareComposition,
+    exportComposition,
     pagesToPackItems,
 } from '@/lib/pdf/compose';
 
@@ -52,7 +53,7 @@ const MAX_PREVIEW_WIDTH = 340;
 /** Reflow animation (plan/UI.md §4). */
 const REFLOW_SPRING = { damping: 18, stiffness: 140 };
 /** Column options offered, "Auto" being a computed fit rather than a literal. */
-const COLUMN_OPTIONS: readonly ('auto' | number)[] = ['auto', 2, 3, 4, 6];
+const COLUMN_OPTIONS: readonly ('auto' | 'one' | number)[] = ['auto', 'one', 2, 3, 4, 6];
 
 /** `/compose?id=<docId>` or `/compose?ids=<id,id,...>`, normalized to a list. */
 function parseDocumentIds(idParam: string | undefined, idsParam: string | undefined): string[] {
@@ -83,10 +84,13 @@ export default function ComposeScreen() {
   const [pages, setPages] = useState<ScanPage[] | null>(null);
   // The just-exported file offered by the post-export send sheet.
   const [sentFile, setSentFile] = useState<{ uri: string; subject: string } | null>(null);
-  const [columnMode, setColumnMode] = useState<'auto' | number>('auto');
+  const [columnMode, setColumnMode] = useState<'auto' | 'one' | number>('one');
   const [separators, setSeparators] = useState(true);
   const [captions, setCaptions] = useState(true);
   const [exporting, setExporting] = useState(false);
+  /** Legibility override (plan §5): the themed confirm is open, waiting
+   * on the user to proceed with an illegible layout or back out. */
+  const [confirmSend, setConfirmSend] = useState(false);
 
   useEffect(() => {
     const ids = parseDocumentIds(idParam, idsParam);
@@ -115,7 +119,7 @@ export default function ComposeScreen() {
       const found = results.filter((r): r is { doc: ScanDocument; docPages: ScanPage[] } => r != null);
       setDocuments(found.map((r) => r.doc));
       setPages(found.flatMap((r) => r.docPages));
-    })();
+    })().catch((e: unknown) => logThrown('compose-load', e));
     return () => {
       cancelled = true;
     };
@@ -125,14 +129,20 @@ export default function ComposeScreen() {
   // the export path will (see composeLayout's own comment) — otherwise the
   // preview shows more items per column than the PDF actually gets.
   const captionSpace = captions ? CAPTION_HEIGHT : 0;
+  const maxPerColumn = columnMode === 'one' ? 1 : undefined;
   const columns =
     columnMode === 'auto'
       ? pages == null
         ? 3
         : fitColumns(pagesToPackItems(pages), { ...COMPOSE_GEO, captionSpace })
-      : columnMode;
+      : columnMode === 'one'
+        ? 1
+        : columnMode;
 
-  const layout = pages == null ? null : composeLayout(pages, columns, captions);
+  const layout =
+    pages == null
+      ? null
+      : composeLayout(pages, columns, captions, maxPerColumn);
   const blocked = layout != null && layout.minScale < BLOCK_SCALE;
   const title = documents != null ? combinedTitle(documents) : '';
 
@@ -142,17 +152,19 @@ export default function ComposeScreen() {
     }
     setExporting(true);
     try {
-      const result = await exportAndShareComposition(
+      // Write the stacked PDF; the send sheet that opens next owns the
+      // handoff (recipient sends, or the OS share sheet from its button).
+      const result = await exportComposition(
         db,
         documents,
         pages,
-        { columns, separators, captions },
+        { columns, separators, captions, maxPerColumn },
       );
       logInfo('export', `composition ${pages.length}p: ${result.pageCount} sheets, ${result.sizeBytes}B`);
       setSentFile({ uri: result.uri, subject: combinedTitle(documents) });
     } catch (e: unknown) {
       logThrown('export', e);
-      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+      Alert.alert('Send failed', e instanceof Error ? e.message : String(e));
     } finally {
       setExporting(false);
     }
@@ -162,27 +174,22 @@ export default function ComposeScreen() {
    * Plan §5's legibility guard: below 0.45 scale, block export unless the
    * user explicitly overrides — a silent "Blocked" label with no actual
    * block just produces an illegible PDF the user discovers too late.
+   * Rendered as the app's themed confirm card (matching every other
+   * dialog), not the OS system alert.
    */
   function onExport() {
     if (!blocked) {
       void runExport();
       return;
     }
-    Alert.alert(
-      'Text may be unreadable',
-      'At this column count some items are shrunk enough that printed text is likely illegible. Reduce columns, or export anyway.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Export anyway', style: 'destructive', onPress: () => void runExport() },
-      ],
-    );
+    setConfirmSend(true);
   }
 
   if (documentIds.length === 0) {
     return (
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
-          <ScreenHeader title="Compose" />
+          <ScreenHeader title="Send" />
           <CenteredMessage message="No documents selected." />
         </SafeAreaView>
       </ThemedView>
@@ -193,7 +200,7 @@ export default function ComposeScreen() {
     return (
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
-          <ScreenHeader title="Compose" />
+          <ScreenHeader title="Send" />
           <CenteredMessage message="Loading…" spinner />
         </SafeAreaView>
       </ThemedView>
@@ -225,7 +232,7 @@ export default function ComposeScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScreenHeader title="Compose" />
+        <ScreenHeader title="Send" />
         <ScrollView contentContainerStyle={styles.content}>
           <View style={[styles.previewWrap, { width: previewWidth, height: previewHeight }, CardShadow(theme.shadow)]}>
             <View style={[styles.previewPage, { backgroundColor: theme.backgroundElement }]}>
@@ -256,7 +263,7 @@ export default function ComposeScreen() {
               {COLUMN_OPTIONS.map((option) => (
                 <ColumnChip
                   key={option}
-                  label={option === 'auto' ? 'Auto' : String(option)}
+                  label={option === 'auto' ? 'Auto' : option === 'one' ? 'One' : String(option)}
                   active={columnMode === option}
                   onPress={() => setColumnMode(option)}
                 />
@@ -276,7 +283,7 @@ export default function ComposeScreen() {
           {layout != null && <LegibilityMeter scale={layout.minScale} />}
 
           <AppButton
-            label={exporting ? 'Exporting…' : blocked ? 'Review before exporting' : 'Export stacked PDF'}
+            label={exporting ? 'Sending…' : blocked ? 'Send when ready' : 'Send PDF'}
             variant={blocked ? 'muted' : 'filled'}
             onPress={onExport}
             disabled={exporting}
@@ -304,6 +311,21 @@ export default function ComposeScreen() {
           });
           setSentFile(null);
         }}
+      />
+
+      {/* Legibility override (plan §5): themed confirm card, not the
+          OS system alert — matches every other dialog in the app. */}
+      <ConfirmDialog
+        visible={confirmSend}
+        title="Text may be unreadable"
+        message="At this column count some items are shrunk enough that printed text is likely illegible. Reduce columns, or send anyway."
+        confirmLabel="Send anyway"
+        destructive
+        onConfirm={() => {
+          setConfirmSend(false);
+          void runExport();
+        }}
+        onCancel={() => setConfirmSend(false)}
       />
     </ThemedView>
   );

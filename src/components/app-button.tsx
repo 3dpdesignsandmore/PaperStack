@@ -84,7 +84,10 @@ export function AppButton({
         {loading ? (
           <ActivityIndicator color={textColor} />
         ) : (
-          <ThemedText type="defaultSemiBold" style={{ color: textColor }}>
+          <ThemedText
+            type="defaultSemiBold"
+            style={{ color: textColor, flexShrink: 1 }}
+            numberOfLines={1}>
             {label}
           </ThemedText>
         )}
@@ -101,6 +104,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    // Label is one unwrapped line (`numberOfLines={1}` above); keep the
+    // pill from growing tall when a row of equal-width buttons is too
+    // narrow for the full label at default padding.
+    overflow: 'hidden',
   },
   disabled: {
     opacity: 0.4,

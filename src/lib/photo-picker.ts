@@ -11,6 +11,8 @@
  */
 import * as ImagePicker from 'expo-image-picker';
 
+import { logInfo } from '@/lib/debug-log';
+
 /** A completed photo-import session. */
 export interface PhotoPickerSession {
   /** The picked photos' local file URIs, in selection order. */
@@ -26,6 +28,7 @@ export interface PhotoPickerSession {
 export async function pickPhotos(): Promise<PhotoPickerSession> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
+    logInfo('photo-picker', 'media-library permission not granted');
     return { pageUris: [] };
   }
 
@@ -40,5 +43,7 @@ export async function pickPhotos(): Promise<PhotoPickerSession> {
     return { pageUris: [] };
   }
 
-  return { pageUris: result.assets.map((asset) => asset.uri) };
+  const pageUris = result.assets.map((asset) => asset.uri);
+  logInfo('photo-picker', `picked ${pageUris.length} photo(s)`);
+  return { pageUris };
 }

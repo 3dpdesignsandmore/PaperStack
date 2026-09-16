@@ -16,6 +16,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
 import { PaletteId, ThemeAppearance } from '@/constants/theme';
+import { logThrown } from '@/lib/debug-log';
 import {
     getSettingSync,
     PALETTE_ID_KEY,
@@ -61,12 +62,16 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
   function setPaletteId(id: PaletteId) {
     setPaletteIdState(id);
-    void setSetting(db, PALETTE_ID_KEY, id);
+    setSetting(db, PALETTE_ID_KEY, id).catch((e: unknown) =>
+      logThrown('set-palette', e),
+    );
   }
 
   function setAppearance(value: ThemeAppearance) {
     setAppearanceState(value);
-    void setSetting(db, THEME_APPEARANCE_KEY, value);
+    setSetting(db, THEME_APPEARANCE_KEY, value).catch((e: unknown) =>
+      logThrown('set-appearance', e),
+    );
   }
 
   const value: ThemeContextValue = { paletteId, appearance, setPaletteId, setAppearance };

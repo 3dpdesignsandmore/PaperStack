@@ -12,7 +12,6 @@
  *   (plan §5 downscale-before-embed happens at persist time)
  */
 import { Directory, File, Paths } from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { PDFDocument } from 'pdf-lib';
 
@@ -87,12 +86,18 @@ export async function buildDocumentPdf(
 }
 
 /**
- * Export a document as a PDF and share it. The file name expands through
- * the user's filename template (Phase 7), so with `{date}` in it the
- * same document re-exported on different days lands under different
- * names — that is the template's point, not an accumulation bug.
+ * Export a document as a PDF and return its URI. Does NOT open the OS
+ * share sheet — the caller's send sheet owns the handoff (recipient
+ * send, or the share-sheet button there). Opening the share sheet here
+ * blocked the export promise until the dialog was dismissed, burying
+ * the recipient sheet behind it.
+ *
+ * The file name expands through the user's filename template (Phase 7),
+ * so with `{date}` in it the same document re-exported on different
+ * days lands under different names — that is the template's point, not
+ * an accumulation bug.
  */
-export async function exportAndShareDocument(
+export async function exportDocument(
   db: SQLiteDatabase,
   doc: ScanDocument,
   pages: ScanPage[],
@@ -121,15 +126,6 @@ export async function exportAndShareDocument(
     file.delete();
   }
   file.write(bytes);
-
-  if (!(await Sharing.isAvailableAsync())) {
-    throw new Error('Sharing is not available on this device');
-  }
-  await Sharing.shareAsync(file.uri, {
-    mimeType: 'application/pdf',
-    dialogTitle: doc.title,
-    UTI: 'com.adobe.pdf',
-  });
 
   return { uri: file.uri, sizeBytes: file.size, pageCount: pages.length };
 }

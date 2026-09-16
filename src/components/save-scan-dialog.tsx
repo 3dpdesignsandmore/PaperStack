@@ -29,7 +29,10 @@ export function SaveScanDialog({
   name,
   onChangeName,
   recentDocs,
+  saving,
   onSaveAsNew,
+  onSaveSeparate,
+  canSplitDocuments,
   onAppend,
   onCancel,
 }: CaptureDialogState) {
@@ -70,7 +73,20 @@ export function SaveScanDialog({
             returnKeyType="done"
             onSubmitEditing={onSaveAsNew}
           />
-          <AppButton label="Save as new" onPress={onSaveAsNew} disabled={name.trim().length === 0} />
+          <AppButton
+            label="Save as one document"
+            onPress={onSaveAsNew}
+            disabled={saving || name.trim().length === 0}
+            loading={saving}
+          />
+          {canSplitDocuments && (
+            <AppButton
+              label={`Save as ${pageCount} separate documents`}
+              variant="outline"
+              onPress={onSaveSeparate}
+              disabled={saving || name.trim().length === 0}
+            />
+          )}
 
           {recentDocs.length > 0 && (
             <>

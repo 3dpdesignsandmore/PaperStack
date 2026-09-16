@@ -129,6 +129,43 @@ describe('packColumns', () => {
     expect(item.y).toBeCloseTo(36, 5);
   });
 
+  it('caps items per column — maxPerColumn: 1 puts one item per column', () => {
+    // Four short receipts that would normally fill one column together;
+    // with the cap each column holds exactly one, so 3 columns = one
+    // page of three, the fourth starting page two.
+    const result = packColumns(
+      [receipt('a', 1), receipt('b', 1), receipt('c', 1), receipt('d', 1)],
+      { ...OPTS, maxPerColumn: 1 },
+    );
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[0].items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(result.pages[1].items.map((i) => i.id)).toEqual(['d']);
+    // Every item sits at the top of its own column (no stacking gutter).
+    for (const page of result.pages) {
+      for (const item of page.items) {
+        expect(item.y + item.height).toBeCloseTo(756, 5);
+      }
+    }
+  });
+
+  it('maxPerColumn: 1 with columns: 1 is one item per page', () => {
+    // The one-scan-per-page mode: classic fit-to-page.
+    const result = packColumns(
+      [receipt('a', 1), receipt('b', 0.5), receipt('c', 2)],
+      { ...OPTS, columns: 1, maxPerColumn: 1 },
+    );
+    expect(result.pages).toHaveLength(3);
+    for (const page of result.pages) {
+      expect(page.items).toHaveLength(1);
+    }
+  });
+
+  it('rejects maxPerColumn below 1', () => {
+    expect(() =>
+      packColumns([receipt('a')], { ...OPTS, maxPerColumn: 0 }),
+    ).toThrow(/maxPerColumn/);
+  });
+
   it('reports minScale across the job (smallest item scale)', () => {
     const result = packColumns([receipt('a', 2), receipt('b', 12)], OPTS);
     // The aspect-12 receipt is clamped, producing PRINTABLE_H/(216*12).

@@ -23,6 +23,7 @@ import { useImportPhotos } from '@/hooks/use-import-photos';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
+import { logThrown } from '@/lib/debug-log';
 import { fetchLibrary } from '@/lib/db/queries';
 import type { LibraryEntry } from '@/lib/model';
 
@@ -62,7 +63,7 @@ export default function LibraryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      load().catch((e: unknown) => logThrown('library-load', e));
     }, [load]),
   );
 
@@ -96,7 +97,7 @@ export default function LibraryScreen() {
       return; // focus effect and stale-timer cleanup handle the empty term
     }
     const timer = setTimeout(() => {
-      load();
+      load().catch((e: unknown) => logThrown('library-search', e));
     }, 250);
     return () => clearTimeout(timer);
     // `load` intentionally excluded: it already changes identity with
@@ -140,6 +141,11 @@ export default function LibraryScreen() {
     const documentId = await importPhotos();
     if (documentId != null) {
       router.push(`/document/${documentId}`);
+    } else {
+      // Split-save (and cancel) resolve as "stay here" — but the grid
+      // only reloads on focus, and nothing navigates, so an import that
+      // saved documents would leave a stale list on screen.
+      load().catch((e: unknown) => logThrown('library-import-load', e));
     }
   }
 
@@ -395,6 +401,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
+    // Breathing room below the header's count line — the header's own
+    // bottom padding is deliberately tight, and the search field tucked
+    // right under it read as part of the title block.
+    marginTop: Spacing.three,
     marginBottom: Spacing.two,
   },
   searchInput: {

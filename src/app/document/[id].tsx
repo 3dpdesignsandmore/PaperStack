@@ -40,7 +40,6 @@ import {
 } from '@/lib/db/queries';
 import { logInfo, logThrown } from '@/lib/debug-log';
 import type { ScanDocument, ScanPage } from '@/lib/model';
-import { exportAndShareDocument } from '@/lib/pdf/export-document';
 import { scanPages } from '@/lib/scanner';
 
 export default function DocumentDetailScreen() {
@@ -58,7 +57,6 @@ export default function DocumentDetailScreen() {
   const [missing, setMissing] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [exporting, setExporting] = useState(false);
   // Reorder mode (Phase 2): the local order is mutated by move buttons and
   // committed atomically via `reorderPages` on Done; cancel just drops it
   // and `load()` restores the DB order.
@@ -91,7 +89,7 @@ export default function DocumentDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      load().catch((e: unknown) => logThrown('document-load', e));
     }, [load]),
   );
 
@@ -108,13 +106,20 @@ export default function DocumentDetailScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            // DB first (cascade removes pages), then files.
-            await db.runAsync('DELETE FROM scan_documents WHERE id = ?', [
-              document.id,
-            ]);
-            const dir = new Directory(scanRootDir(), document.id);
-            if (dir.exists) {
-              dir.delete();
+            try {
+              // DB first (cascade removes pages), then files.
+              await db.runAsync('DELETE FROM scan_documents WHERE id = ?', [
+                document.id,
+              ]);
+              const dir = new Directory(scanRootDir(), document.id);
+              if (dir.exists) {
+                dir.delete();
+              }
+            } catch (e: unknown) {
+              logThrown('delete-document', e);
+              const message = e instanceof Error ? e.message : String(e);
+              Alert.alert('Delete failed', message);
+              return;
             }
             router.back();
           },
@@ -152,49 +157,14 @@ export default function DocumentDetailScreen() {
     }
   }
 
-  /** Export flow entry: choose one-page-per-scan or combined N-up. */
+  /** Send flow entry: go straight to the Combine screen, defaulting to
+   * one scan per page — the old "one per page or combine?" prompt is
+   * gone; the column chips there cover every density anyway. */
   function onExport() {
     if (document == null) {
       return;
     }
-    Alert.alert(
-      'Export PDF',
-      'Export each scan on its own page, or combine them multiple-per-page?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'One per page',
-          onPress: () => {
-            void exportAsIs();
-          },
-        },
-        {
-          text: 'Combine',
-          onPress: () => {
-            router.push(`/compose?id=${document.id}`);
-          },
-        },
-      ],
-    );
-  }
-
-  async function exportAsIs() {
-    if (document == null || pages == null) {
-      return;
-    }
-    setExporting(true);
-    try {
-      // Write the file and hand it to the OS share sheet (the canonical
-      // path), then open the send sheet for one-tap recipient sends.
-      const result = await exportAndShareDocument(db, document, pages);
-      logInfo('export', `document ${document.id}: ${result.pageCount}p, ${result.sizeBytes}B`);
-      setSentFile({ uri: result.uri, subject: document.title });
-    } catch (e: unknown) {
-      logThrown('export', e);
-      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
-    } finally {
-      setExporting(false);
-    }
+    router.push(`/compose?id=${document.id}`);
   }
 
   if (missing) {
@@ -257,8 +227,14 @@ export default function DocumentDetailScreen() {
     // Only write when the order actually changed — a no-op commit would
     // still bump `updated_at` and rewrite every row for nothing.
     if (draftOrder.some((page, index) => pages[index]?.id !== page.id)) {
-      await reorderPages(db, id, draftOrder.map((page) => page.id));
-      await load();
+      try {
+        await reorderPages(db, id, draftOrder.map((page) => page.id));
+        await load();
+      } catch (e: unknown) {
+        logThrown('reorder-pages', e);
+        const message = e instanceof Error ? e.message : String(e);
+        Alert.alert('Reorder failed', message);
+      }
     }
     setDraftOrder([]);
   }
@@ -287,8 +263,14 @@ export default function DocumentDetailScreen() {
     if (id == null) {
       return;
     }
-    await removeTagFromDocument(db, id, tagId);
-    setTags(await fetchDocumentTags(db, id));
+    try {
+      await removeTagFromDocument(db, id, tagId);
+      setTags(await fetchDocumentTags(db, id));
+    } catch (e: unknown) {
+      logThrown('remove-tag', e);
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Could not remove tag', message);
+    }
   }
 
   return (
@@ -403,10 +385,9 @@ export default function DocumentDetailScreen() {
           <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow)]}>
             <ActionBarItem
               icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }}
-              label={exporting ? 'Exporting…' : 'Export'}
+              label="Send"
               color={theme.accent}
               onPress={onExport}
-              disabled={exporting}
             />
             <ActionBarItem
               icon={{ ios: 'pencil', android: 'edit' }}

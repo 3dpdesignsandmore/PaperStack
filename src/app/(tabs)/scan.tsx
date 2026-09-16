@@ -13,6 +13,7 @@ import { useCallback, useRef } from 'react';
 import { SaveScanDialog } from '@/components/save-scan-dialog';
 import { ThemedView } from '@/components/themed-view';
 import { useCapture } from '@/hooks/use-capture';
+import { logThrown } from '@/lib/debug-log';
 
 export default function ScanRoute() {
   const router = useRouter();
@@ -33,7 +34,12 @@ export default function ScanRoute() {
         } else {
           router.back();
         }
-      })();
+      })().catch((e: unknown) => {
+        // capture()'s own paths alert on failure; this catches anything
+        // that slips past them (e.g. a DB handle torn down mid-flight by
+        // a reload) so it can't surface as an unhandled rejection.
+        logThrown('scan-route', e);
+      });
     }, [capture, router]),
   );
 

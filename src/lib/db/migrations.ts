@@ -10,7 +10,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 /** Current schema version. Increment when adding a migration step. */
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 
 /** Database file name, opened relative to the default SQLite directory. */
 export const DATABASE_NAME = 'paperstack.db';
@@ -103,6 +103,17 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   }
 
   // Future migrations: `if (current === 3) { ... current = 4; }`
+
+  if (current === 3) {
+    // v4: a second email per recipient — the home + work case. The
+    // primary `email` stays the default send target; `email_2` is an
+    // explicitly chosen alternative, never a fallback the user didn't opt
+    // into.
+    await db.execAsync(`
+      ALTER TABLE recipients ADD COLUMN email_2 TEXT;
+    `);
+    current = 4;
+  }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

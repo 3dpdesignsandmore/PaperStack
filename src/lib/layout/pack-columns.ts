@@ -31,6 +31,11 @@ export interface PackOptions {
   /** Number of columns (plan §5: 2 / 3 / 4 / 6, or a computed auto-fit). */
   columns: number;
   /**
+   * Cap on items per column. `1` with `columns: 1` is one item per
+   * page — classic fit-to-page. Default is uncapped (fill the column).
+   */
+  maxPerColumn?: number;
+  /**
    * Extra height reserved directly below each item, in points — room for a
    * caption drawn by a caller (this module has no PDF/text knowledge of its
    * own). Defaults to 0, so existing callers are unaffected. An oversize
@@ -91,7 +96,7 @@ export function packColumns(
 ): PackResult {
   validateOptions(options);
 
-  const { pageSize, margin, gutter, verticalGutter, columns, captionSpace = 0 } = options;
+  const { pageSize, margin, gutter, verticalGutter, columns, captionSpace = 0, maxPerColumn } = options;
   const printableH = pageSize.height - 2 * margin;
   const columnWidth = columnWidthOf(options);
   const topOfColumn = pageSize.height - margin;
@@ -100,6 +105,7 @@ export function packColumns(
   let page: PlacedItem[] = [];
   let column = 0;
   let usedH = 0; // height consumed in the current column (items + gutters)
+  let itemsInColumn = 0;
   let minScale = Number.POSITIVE_INFINITY;
 
   for (const item of items) {
@@ -119,7 +125,12 @@ export function packColumns(
     // The block an item occupies includes its reserved caption band, which
     // sits directly below the image itself.
     const block = height + captionSpace;
-    if (usedH + gutterBefore + block > printableH) {
+    // `maxPerColumn` cap: the column is "full" once the cap is reached —
+    // same wrap logic as a height overflow, so the two share one code path.
+    const columnFull =
+      usedH + gutterBefore + block > printableH ||
+      (maxPerColumn != null && itemsInColumn + 1 > maxPerColumn);
+    if (columnFull) {
       // Move to the next column; if none remain, emit the page. The first
       // item of a new column starts at the top with no leading gutter —
       // `gutterBefore` was computed against the *previous* column's usedH
@@ -133,6 +144,7 @@ export function packColumns(
         column = 0;
       }
       usedH = 0;
+      itemsInColumn = 0;
       gutterBefore = 0;
     }
 
@@ -142,6 +154,7 @@ export function packColumns(
 
     page.push({ id: item.id, x, y: itemTop - height, width, height, scale });
     usedH += gutterBefore + block;
+    itemsInColumn += 1;
     minScale = Math.min(minScale, scale);
   }
 
@@ -187,6 +200,9 @@ export function fitColumns(
 function validateOptions(options: PackOptions): void {
   if (options.columns < 1) {
     throw new Error(`columns must be >= 1, got ${options.columns}`);
+  }
+  if (options.maxPerColumn != null && options.maxPerColumn < 1) {
+    throw new Error(`maxPerColumn must be >= 1, got ${options.maxPerColumn}`);
   }
   if (options.margin < 0) {
     throw new Error(`margin must be >= 0, got ${options.margin}`);
