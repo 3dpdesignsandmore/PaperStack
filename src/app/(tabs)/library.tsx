@@ -7,24 +7,27 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { TAB_BAR_GAP, TAB_BAR_HEIGHT } from '@/components/floating-tab-bar';
 import { PaperThumb } from '@/components/paper-thumb';
 import { SaveScanDialog } from '@/components/save-scan-dialog';
 import { ScreenTitle } from '@/components/screen-title';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { BottomTabInset, CardShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useImportPhotos } from '@/hooks/use-import-photos';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
+import { scanRootDir } from '@/lib/db/persist-scan';
 import { fetchLibrary } from '@/lib/db/queries';
 import { logThrown } from '@/lib/debug-log';
+import { Directory } from 'expo-file-system';
 import type { LibraryEntry } from '@/lib/model';
 
 /** Columns in the library grid. */
@@ -36,12 +39,6 @@ export default function LibraryScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ select?: string }>();
   const insets = useSafeAreaInsets();
-  // Exact clearance above the floating tab bar (same math the bar itself
-  // uses) — `BottomTabInset` is a per-platform *guess* good enough for
-  // scroll-content padding, but this button is absolutely positioned, so a
-  // guess that's too small means it renders partly behind the bar instead
-  // of just leaving slightly more empty space at the end of a list.
-  const composeBarBottom = insets.bottom + TAB_BAR_GAP + TAB_BAR_HEIGHT + Spacing.two;
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   // Search-as-you-type (Phase 2): the term is state; `load` folds it into
@@ -56,6 +53,13 @@ export default function LibraryScreen() {
   const [selecting, setSelecting] = useState(() => params.select === 'combine');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { importPhotos, dialog: importDialog } = useImportPhotos();
+  /** Multi-delete confirm (plan §8's delete semantics, batched): the themed
+   * confirm is open, waiting on the user to remove the selected documents
+   * or back out. */
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // True while the batch delete is writing — the toolbar's actions
+  // disable so a slow delete can't be double-tapped.
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setEntries(await fetchLibrary(db, search));
@@ -146,6 +150,45 @@ export default function LibraryScreen() {
       // only reloads on focus, and nothing navigates, so an import that
       // saved documents would leave a stale list on screen.
       load().catch((e: unknown) => logThrown('library-import-load', e));
+    }
+  }
+
+  /** Remove every selected document — rows first (FK cascades pages and
+   * document_tags), then each document's scan files from disk. Sequential
+   * by convention (read-modify-write of shared state); one failure stops
+   * the batch with what happened reported, never a silent partial. */
+  async function onDeleteSelected() {
+    if (selected.size === 0 || deleting) {
+      return;
+    }
+    setDeleting(true);
+    const ids = Array.from(selected);
+    const removals: Directory[] = ids.map((docId) => new Directory(scanRootDir(), docId));
+    try {
+      // A single transaction wrapping every delete keeps the batch
+      // atomic: either all rows go or none do. `withTransactionAsync`
+      // callbacks must return Promise<void>, so the loop lives inside it.
+      await db.withTransactionAsync(async () => {
+        for (const docId of ids) {
+          await db.runAsync('DELETE FROM scan_documents WHERE id = ?', [docId]);
+        }
+      });
+      // Files only after the rows committed — a failure here leaves
+      // orphans (harmless, invisible) rather than live rows with no
+      // files (visible thumbnails that 404 on open).
+      for (const dir of removals) {
+        if (dir.exists) {
+          dir.delete();
+        }
+      }
+      exitSelection();
+    } catch (e: unknown) {
+      logThrown('library-delete', e);
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Delete failed', message);
+    } finally {
+      setDeleting(false);
+      load().catch((e: unknown) => logThrown('library-delete-load', e));
     }
   }
 
@@ -264,18 +307,49 @@ export default function LibraryScreen() {
           />
         )}
         {selecting && selected.size > 0 && (
-          <AppButton
-            label={`Combine ${selected.size} into stacked PDF`}
-            onPress={() =>
-              router.push({
-                pathname: '/compose',
-                params: { ids: Array.from(selected).join(',') },
-              })
-            }
-            style={[styles.composeBar, { bottom: composeBarBottom }]}
-          />
+          <ThemedView
+            type="backgroundElement"
+            style={[
+              styles.selectionBar,
+              CardShadow(theme.shadow),
+              { bottom: insets.bottom + TAB_BAR_GAP },
+            ]}>
+            {deleting ? (
+              <ActivityIndicator style={styles.toolbarSpinner} />
+            ) : (
+              <>
+                <AppButton
+                  label={`Combine ${selected.size}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/compose',
+                      params: { ids: Array.from(selected).join(',') },
+                    })
+                  }
+                />
+                <AppButton
+                  label="Delete"
+                  variant="danger"
+                  onPress={() => setConfirmDelete(true)}
+                />
+              </>
+            )}
+          </ThemedView>
         )}
       </SafeAreaView>
+
+      <ConfirmDialog
+        visible={confirmDelete}
+        title="Delete documents"
+        message={`Delete ${selected.size} document${selected.size === 1 ? '' : 's'} and all their pages? This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          setConfirmDelete(false);
+          void onDeleteSelected();
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
 
       <SaveScanDialog {...importDialog} />
     </ThemedView>
@@ -467,11 +541,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  // `bottom` comes from `composeBarBottom` (real safe-area inset), not a
-  // static value here.
-  composeBar: {
+  // `bottom` comes from the real safe-area inset at the call site, not a
+  // static value here. Same pill geometry as the floating tab bar so the
+  // swap reads as *that bar changing contents*, not an overlay popping in.
+  selectionBar: {
     position: 'absolute',
     left: Spacing.three,
     right: Spacing.three,
+    height: TAB_BAR_HEIGHT,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+    paddingHorizontal: Spacing.two,
+  },
+  toolbarSpinner: {
+    flex: 1,
   },
 });
