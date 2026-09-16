@@ -7,7 +7,7 @@
  * it stays a "Coming soon" row rather than a switch with nothing behind
  * it.
  */
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
@@ -99,7 +99,6 @@ const SECTIONS: SettingsSection[] = [
 export default function SettingsScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
-  const router = useRouter();
   const { paletteId, appearance, setPaletteId, setAppearance } = useThemePreferences();
   const systemScheme = useColorScheme();
   // The scheme every palette-preview swatch resolves against — computed
@@ -354,24 +353,6 @@ export default function SettingsScreen() {
               </ThemedText>
             </AppCard>
           ))}
-
-          {__DEV__ && (
-            <AppCard style={styles.section}>
-              <ThemedText type="label" style={{ color: theme.textSecondary }}>
-                Dev only
-              </ThemedText>
-              <ThemedText type="defaultSemiBold">Invisible text spike</ThemedText>
-              <ThemedText type="small" style={styles.rowDetail}>
-                Verifies the pdf-lib searchable-text layer on this device.
-              </ThemedText>
-              <AppButton
-                label="Run OCR spike"
-                variant="outline"
-                onPress={() => router.push('/ocr-spike')}
-                style={styles.devButton}
-              />
-            </AppCard>
-          )}
         </ScrollView>
       </SafeAreaView>
 
@@ -560,10 +541,6 @@ const styles = StyleSheet.create({
   },
   rowDetail: {
     lineHeight: 18,
-  },
-  devButton: {
-    alignSelf: 'flex-start',
-    marginTop: Spacing.one,
   },
   paletteRow: {
     minHeight: 52,

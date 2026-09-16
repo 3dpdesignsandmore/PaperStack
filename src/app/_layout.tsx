@@ -19,9 +19,9 @@ SplashScreen.preventAutoHideAsync();
 
 /**
  * Root layout: font load gate + SQLite provider + a Stack wrapping the
- * (tabs) group. Any route outside (tabs) — e.g. /ocr-spike — pushes onto
- * this Stack; without that Stack wrapper, router.push to any non-tab route
- * silently does nothing (learned the hard way, 2026-09-14).
+ * (tabs) group. Any route outside (tabs) pushes onto this Stack; without
+ * that Stack wrapper, router.push to any non-tab route silently does
+ * nothing (learned the hard way, 2026-09-14).
  *
  * The splash screen stays up (`preventAutoHideAsync` above) until every
  * family referenced by `Fonts` in `src/constants/theme.ts` has loaded —

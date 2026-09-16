@@ -322,7 +322,7 @@ src/app/(tabs)/scan.tsx           Deep-link target only — runs capture on focu
 src/app/settings.tsx              Pushed: appearance, palette, capture settings, filename template, recipients
 src/app/compose.tsx               N-up compose: `?id=<docId>` or `?ids=<id,id,...>`
 src/app/document/[id].tsx         Detail: page list, Export (one per page / Combine), rename, add pages, delete
-src/app/ocr-spike.tsx             Dev-only Phase 0 spike screen (graduates or leaves with Phase 5)
+src/app/ocr-spike.tsx             (removed 2026-09-16 — spike served its purpose; see git history)
 ```
 
 Still-planned routes, unchanged: `document/[id]/edit.tsx` (annotation canvas, Phase 6) and `receipt/[id].tsx` (extracted-fields editor, Phase 5), pushing onto the same root Stack.
@@ -425,7 +425,7 @@ Single-page PDF export moved *before* the N-up engine. The polyfill and image-em
 
 ## 13. Immediate next steps
 
-1. ~~**Spike `pdf-lib`'s invisible text layer**~~ — **done, PASSED** (2026-09-14). `src/lib/spikes/invisible-text.ts` + `scripts/verify-invisible-text.mts` (Node) + `src/app/ocr-spike.tsx` (device, reachable from Home while Phase 0 lasts). Structural verification (decoded content stream contains `3 Tr` and the OCR word bytes) and behavioral verification (independent pdf-parse extraction) both pass; on-device the Node-only check reports "skipped" without failing the run. Searchable PDFs are de-risked.
+1. ~~**Spike `pdf-lib`'s invisible text layer**~~ — **done, PASSED** (2026-09-14; spike code removed 2026-09-16 after serving its purpose — its Node-only pdf-parse checker broke release bundles: pdf-parse's browser build embeds pdf.js worker `await import(url)` syntax Hermes cannot compile. See git history for the spike code.) The mechanics that matter live in this plan (§6): raw `pushOperators`, `newFontDictionaryKey`. Searchable PDFs are de-risked.
 2. **Check the name and reserve it.** Search the App Store, Play Store, and USPTO TESS for "PaperStack". If it is clear, reserve it in App Store Connect immediately — app names are first-come, you can reserve one without a build, and discovering the name is taken after you have built branding around it is a bad week. You have been through trademark work with ICS360, so this will be familiar territory.
 3. ~~**Set identity before the first EAS build.**~~ **Done.** Both IDs are `com.tdpdesignsandmore.paperstack` — the `3dp` spelling is invalid on Android (package segments must start with a letter). `NSCameraUsageDescription` is set. `NSPhotoLibraryAddUsageDescription` was deliberately **not** added: nothing writes to the photo library directly (reads go through the system picker, saves through the share sheet), so the string would be dead weight. Revisit only if a feature ever writes to the library.
 4. ~~Strip web and the starter template (§2)~~ — done in Phase 0 (commit `a707401`).
