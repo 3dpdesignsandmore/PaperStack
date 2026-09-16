@@ -33,9 +33,10 @@ import {
     ThemeAppearance,
     type ThemeColors,
 } from '@/constants/theme';
-import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useThemePreferences } from '@/hooks/theme-provider';
+import { useResetOnOpen } from '@/hooks/use-reset-on-open';
 import { useTheme } from '@/hooks/use-theme';
+import { generateId } from '@/lib/db/persist-scan';
 import {
     deleteRecipient,
     fetchRecipients,
@@ -47,7 +48,6 @@ import {
     setSetting,
     type RecipientRow,
 } from '@/lib/db/queries';
-import { generateId } from '@/lib/db/persist-scan';
 import { FILENAME_TEMPLATE_KEY } from '@/lib/pdf/filename';
 
 /** Quality presets exposed in Settings, mapped to `croppedImageQuality`. */

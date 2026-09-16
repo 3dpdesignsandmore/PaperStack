@@ -5,9 +5,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  expandFilenameTemplate,
-  resolveExportFilename,
-  todayStamp,
+    expandFilenameTemplate,
+    resolveExportFilename,
+    todayStamp,
 } from './filename';
 
 /** Identity sanitizer — the unit under test is expansion, not sanitizing. */
