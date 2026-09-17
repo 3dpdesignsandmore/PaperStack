@@ -31,6 +31,10 @@ run.bat         # expo start --dev-client --port 8082 (daily driver on Windows)
 
 `.vscode/settings.json` enables format-on-save fixes: `source.fixAll`, `source.organizeImports`, and `source.sortMembers` all run on save.
 
+## Dependencies
+
+Any change that adds, removes or upgrades a dependency must run `npm run licenses` and commit the regenerated `src/lib/licenses.json` in the same commit. Native libraries the `node_modules` walk can't see go in `MANUAL_ENTRIES` in `scripts/generate-licenses.mjs`.
+
 ## Conventions
 
 - Make **one atomic edit pass per file** — avoid reopening the same file for repeated small edits.

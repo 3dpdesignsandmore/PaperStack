@@ -9,7 +9,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,8 +38,9 @@ import {
     SCAN_QUALITY_KEY,
     type TagRow,
 } from '@/lib/db/queries';
+import { fetchReceiptData, saveReceiptData } from '@/lib/db/ocr-queries';
 import { logInfo, logThrown } from '@/lib/debug-log';
-import type { ScanDocument, ScanPage } from '@/lib/model';
+import type { ReceiptData, ScanDocument, ScanPage } from '@/lib/model';
 import { scanPages } from '@/lib/scanner';
 
 export default function DocumentDetailScreen() {
@@ -67,6 +68,11 @@ export default function DocumentDetailScreen() {
   // Tags on this document (Phase 2).
   const [tags, setTags] = useState<TagRow[]>([]);
   const [addingTag, setAddingTag] = useState(false);
+  // Receipt fields for the first page (OCR, plan §6). null = OCR hasn't
+  // produced anything to show; 'pending' = the quiet reading state while
+  // the background pipeline works; a ReceiptData = extracted fields,
+  // editable — corrections set userEdited so a re-run can't clobber them.
+  const [receipt, setReceipt] = useState<ReceiptData | 'pending' | null>(null);
 
   const load = useCallback(async () => {
     if (id == null) {
@@ -85,6 +91,30 @@ export default function DocumentDetailScreen() {
     setDocument(doc);
     setPages(docPages);
     setTags(docTags);
+    // Receipt fields follow OCR (plan §6): a first page with a receipt row
+    // shows it; no row yet means the background pipeline is still working
+    // — 'pending' renders the quiet reading state and a short poll picks
+    // the result up when it lands.
+    const firstPage = docPages[0];
+    if (firstPage != null) {
+      const extracted = await fetchReceiptData(db, firstPage.id);
+      if (extracted != null) {
+        setReceipt(extracted);
+      } else {
+        setReceipt('pending');
+        setTimeout(() => {
+          fetchReceiptData(db, firstPage.id)
+            .then((late) => {
+              if (late != null) {
+                setReceipt(late);
+              }
+            })
+            .catch((e: unknown) => logThrown('receipt-poll', e));
+        }, 2500);
+      }
+    } else {
+      setReceipt(null);
+    }
   }, [db, id]);
 
   useFocusEffect(
@@ -166,6 +196,78 @@ export default function DocumentDetailScreen() {
     }
     router.push(`/compose?id=${document.id}`);
   }
+
+  /** Persist a correction to one receipt field (plan §6: every extracted
+   * value is editable; corrections must never be clobbered by a re-run).
+   * `respectUserEdits` is false here — the user's own edit IS the edit. */
+  function updateReceipt(patch: Partial<Omit<ReceiptData, 'pageId'>>): void {
+    setReceipt((current) => {
+      if (current == null || current === 'pending') {
+        return current;
+      }
+      const next: ReceiptData = {
+        ...current,
+        ...patch,
+        userEdited: true,
+      };
+      const pageId = next.pageId;
+      saveReceiptData(db, next, false).catch((e: unknown) => {
+        logThrown('receipt-edit', e);
+        Alert.alert('Could not save', e instanceof Error ? e.message : String(e));
+      });
+      void pageId;
+      return next;
+    });
+  }
+
+  const receiptCard =
+    receipt === 'pending' ? (
+      <View style={styles.tagBar}>
+        <ThemedText type="small" style={{ color: theme.textSecondary }}>
+          Reading receipt…
+        </ThemedText>
+      </View>
+    ) : receipt == null ? null : (
+      <View style={styles.receiptBar}>
+        <TextInput
+          style={[styles.receiptInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement }]}
+          value={receipt.merchant ?? ''}
+          onChangeText={(merchant) => updateReceipt({ merchant: merchant.trim() === '' ? null : merchant })}
+          placeholder="Merchant"
+          placeholderTextColor={theme.textSecondary}
+          autoCorrect={false}
+          underlineColorAndroid="transparent"
+          accessibilityLabel="Merchant"
+        />
+        <TextInput
+          style={[styles.receiptInput, styles.receiptInputNarrow, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement }]}
+          value={receipt.date == null ? '' : new Date(receipt.date).toISOString().slice(0, 10)}
+          onChangeText={(text) => {
+            const parsed = Date.parse(`${text}T00:00:00Z`);
+            updateReceipt({ date: Number.isNaN(parsed) ? null : parsed });
+          }}
+          placeholder="Date"
+          placeholderTextColor={theme.textSecondary}
+          autoCorrect={false}
+          underlineColorAndroid="transparent"
+          accessibilityLabel="Date"
+        />
+        <TextInput
+          style={[styles.receiptInput, styles.receiptInputNarrow, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement }]}
+          value={receipt.total == null ? '' : String(receipt.total)}
+          onChangeText={(text) => {
+            const value = Number(text);
+            updateReceipt({ total: Number.isFinite(value) ? value : null });
+          }}
+          placeholder="Total"
+          placeholderTextColor={theme.textSecondary}
+          autoCorrect={false}
+          underlineColorAndroid="transparent"
+          keyboardType="decimal-pad"
+          accessibilityLabel="Total"
+        />
+      </View>
+    );
 
   if (missing) {
     return (
@@ -281,6 +383,11 @@ export default function DocumentDetailScreen() {
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScreenHeader title={document.title} />
       </SafeAreaView>
+      {/* Receipt fields (OCR, plan §6): extracted values as editable
+          inputs — "design the receipt detail screen around correction,
+          not display". Corrections set userEdited so an OCR re-run never
+          clobbers them. 'pending' is the quiet reading state. */}
+      {!reordering && receiptCard}
       {/* Tags row (Phase 2): chips plus add. Hidden while reordering —
           reordering is about the pages, not the metadata. */}
       {!reordering && (
@@ -550,6 +657,24 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.two,
+  },
+  receiptBar: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  receiptInput: {
+    flex: 1,
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.two,
+    fontSize: 14,
+  },
+  receiptInputNarrow: {
+    flex: 0,
+    minWidth: 92,
   },
   tagChip: {
     borderRadius: Radius.pill,

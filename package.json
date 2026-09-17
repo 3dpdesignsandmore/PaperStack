@@ -28,6 +28,8 @@
     "react-native": "0.86.3",
     "react-native-document-scanner-plugin": "^2.0.4",
     "react-native-gesture-handler": "~2.32.0",
+    "react-native-nitro-modules": "^0.35.10",
+    "react-native-nitro-ocr": "^0.1.0-beta.0",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",

@@ -15,6 +15,7 @@ import { Alert } from 'react-native';
 
 import { appendScanSession, type PersistOptions, persistOptionsFromSetting, persistScanSession } from '@/lib/db/persist-scan';
 import { fetchLibrary, getSetting, SCAN_NAME_PREFIX_KEY, SCAN_QUALITY_KEY } from '@/lib/db/queries';
+import { scheduleOcr } from '@/lib/ocr/pipeline';
 import { DocumentKind, type LibraryEntry } from '@/lib/model';
 
 /** State + handlers for the save-flow dialog a caller renders. */
@@ -100,6 +101,9 @@ export function useSaveFlow(): UseSaveFlowResult {
     try {
       const doc = await persistScanSession(db, uris, title, DocumentKind.Document, persistOptions);
       setSaving(false);
+      // Background OCR (plan §6): fire-and-forget AFTER the persist — the
+      // scan is saved no matter what recognition does.
+      scheduleOcr(db, doc.id);
       settle(doc.id);
     } catch (e: unknown) {
       setSaving(false);
@@ -125,11 +129,13 @@ export function useSaveFlow(): UseSaveFlowResult {
     const persistOptions = persistOptionsRef.current;
     setSaving(true);
     let saved = 0;
+    let lastDocId: string | null = null;
     try {
       // Sequential by convention (read-modify-write of the same tables).
       for (let index = 0; index < uris.length; index++) {
         const title = index === 0 ? base : `${base} (${index + 1})`;
-        await persistScanSession(db, [uris[index]], title, DocumentKind.Document, persistOptions);
+        const doc = await persistScanSession(db, [uris[index]], title, DocumentKind.Document, persistOptions);
+        lastDocId = doc.id;
         saved++;
       }
     } catch (e: unknown) {
@@ -142,10 +148,16 @@ export function useSaveFlow(): UseSaveFlowResult {
       );
     }
     setSaving(false);
-    settle(null);
     if (saved > 0) {
+      // OCR the split saves too — every document scheduled right after
+      // its own persist kept the loop simple; one batch call here covers
+      // them all.
+      if (lastDocId != null) {
+        scheduleOcr(db, lastDocId);
+      }
       Alert.alert('Saved', `Saved ${saved} document${saved === 1 ? '' : 's'} to your library.`);
     }
+    settle(null);
   }
 
   async function onAppend(target: LibraryEntry) {
@@ -156,6 +168,9 @@ export function useSaveFlow(): UseSaveFlowResult {
     const persistOptions = persistOptionsRef.current;
     try {
       await appendScanSession(db, uris, target.id, persistOptions);
+      // Background OCR on the appended pages — after the write, like
+      // the new-document path.
+      scheduleOcr(db, target.id);
       settle(target.id);
       // The settle above lands the caller on the target document, new
       // pages at the bottom — say it out loud too, so the save outcome

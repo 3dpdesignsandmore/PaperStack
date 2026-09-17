@@ -47,3 +47,37 @@ export interface LibraryEntry {
   /** Tag names, alphabetical. May be empty; never null. */
   tags: string[];
 }
+
+/** One recognized region of a page — normalized 0..1, top-left origin
+ * (the engine already normalizes on both platforms; this is the
+ * persisted shape, flattened for SQLite and the export path). */
+export interface OcrBlock {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  confidence: number;
+}
+
+/** A page's full OCR result (plan §7). */
+export interface OcrResult {
+  id: string;
+  pageId: string;
+  fullText: string;
+  blocks: OcrBlock[];
+}
+
+/** Extracted receipt fields for a page (plan §7) — every value is a
+ * guess the user can correct; `userEdited` guards against a later OCR
+ * re-run clobbering corrections. */
+export interface ReceiptData {
+  pageId: string;
+  merchant: string | null;
+  date: number | null;
+  total: number | null;
+  tax: number | null;
+  currency: string;
+  confidence: number;
+  userEdited: boolean;
+}

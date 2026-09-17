@@ -10,7 +10,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 /** Current schema version. Increment when adding a migration step. */
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 
 /** Database file name, opened relative to the default SQLite directory. */
 export const DATABASE_NAME = 'paperstack.db';
@@ -113,6 +113,35 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       ALTER TABLE recipients ADD COLUMN email_2 TEXT;
     `);
     current = 4;
+  }
+
+  if (current === 4) {
+    // v5 (plan §6/§7): OCR. One row per page for the full recognition
+    // result (searchable text + blocks), one for the extracted receipt
+    // fields. `page_receipts.user_edited` is the "never clobber
+    // corrections" guard — the background re-run refreshes `page_ocr`
+    // but leaves an edited `page_receipts` row alone.
+    await db.execAsync(`
+      CREATE TABLE page_ocr (
+        id TEXT PRIMARY KEY NOT NULL,
+        page_id TEXT NOT NULL UNIQUE REFERENCES scan_pages(id) ON DELETE CASCADE,
+        full_text TEXT NOT NULL,
+        blocks_json TEXT NOT NULL,
+        recognized_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE page_receipts (
+        page_id TEXT PRIMARY KEY NOT NULL REFERENCES scan_pages(id) ON DELETE CASCADE,
+        merchant TEXT,
+        date_ms INTEGER,
+        total REAL,
+        tax REAL,
+        currency TEXT NOT NULL DEFAULT '',
+        confidence REAL NOT NULL DEFAULT 0,
+        user_edited INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    current = 5;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
