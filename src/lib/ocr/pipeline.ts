@@ -51,11 +51,18 @@ export function pagesForOcr(pages: Pick<ScanPage, 'id' | 'imagePath'>[]): Pipeli
  */
 export async function runOcrForDocument(db: SQLiteDatabase, documentId: string): Promise<void> {
   try {
+    // Front-door instrumentation (2026-09-17): the silent exits below
+    // produced a ZERO-entry log while every page "read" forever — the
+    // diagnosis was impossible without knowing whether the pipeline
+    // ran at all. Every exit path now leaves a line.
+    logInfo('ocr-pipeline', `start: document ${documentId}`);
     const enabled = await getSetting(db, OCR_ENABLED_KEY);
     if (enabled === 'false') {
+      logInfo('ocr-pipeline', 'skipped: OCR disabled in settings');
       return;
     }
     const pages = await fetchPipelinePages(db, documentId);
+    logInfo('ocr-pipeline', `recognizing ${pages.length} page(s)`);
     for (const page of pages) {
       await runOcrForPage(db, page);
     }
@@ -72,6 +79,7 @@ export async function runOcrForDocument(db: SQLiteDatabase, documentId: string):
  * receipt fields). Never throws — logging and moving on is the contract.
  */
 export async function runOcrForPage(db: SQLiteDatabase, page: PipelinePage): Promise<void> {
+  logInfo('ocr-recognize', `page ${page.id}: start`);
   let recognized: Awaited<ReturnType<typeof recognizePage>>;
   try {
     recognized = await recognizePage(page.imagePath);

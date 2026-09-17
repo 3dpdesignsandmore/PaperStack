@@ -13,10 +13,12 @@
  */
 import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 import { getSetting } from '@/lib/db/queries';
-import type { ScanDocument, ScanPage } from '@/lib/model';
+import { fetchOcrResult } from '@/lib/db/ocr-queries';
+import type { OcrBlock, ScanDocument, ScanPage } from '@/lib/model';
+import { drawInvisibleText } from '@/lib/pdf/invisible-text';
 import { FILENAME_TEMPLATE_KEY, resolveExportFilename } from '@/lib/pdf/filename';
 
 /** US Letter, in points (plan §5). */
@@ -52,15 +54,18 @@ export function sanitizeTitle(title: string): string {
 
 /**
  * Build PDF bytes for one document: a Letter page per scan page, image
- * scaled proportionally to fit inside the margins and centered. Pages
- * arrive in reading order from {@link fetchPages}.
+ * scaled proportionally to fit inside the margins and centered — plus,
+ * when OCR has run, an invisible searchable text layer over each image
+ * (plan §6 Job 1). Pages arrive in reading order from {@link fetchPages}.
  */
 export async function buildDocumentPdf(
+  db: SQLiteDatabase | null,
   doc: ScanDocument,
   pages: ScanPage[],
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(doc.title);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const availableW = PAGE_PTS.width - 2 * MARGIN_PTS;
   const availableH = PAGE_PTS.height - 2 * MARGIN_PTS;
@@ -74,15 +79,49 @@ export async function buildDocumentPdf(
     const drawH = image.height * scale;
 
     const pdfPage = pdfDoc.addPage([PAGE_PTS.width, PAGE_PTS.height]);
+    const drawX = (PAGE_PTS.width - drawW) / 2;
+    const drawY = (PAGE_PTS.height - drawH) / 2;
     pdfPage.drawImage(image, {
-      x: (PAGE_PTS.width - drawW) / 2,
-      y: (PAGE_PTS.height - drawH) / 2,
+      x: drawX,
+      y: drawY,
       width: drawW,
       height: drawH,
     });
+
+    // Searchable layer: the page's OCR blocks (if any) mapped from
+    // normalized image space into the drawn image's rect, then written
+    // as invisible text. A missing result (OCR off / not yet run) is
+    // not an error — the page just exports without a text layer.
+    if (db != null) {
+      const ocr = await fetchOcrResult(db, page.id);
+      if (ocr != null) {
+        for (const block of ocr.blocks) {
+          drawInvisibleText(pdfPage, font, block.text, {
+            x: drawX + block.x * drawW,
+            y: drawY + block.y * drawH,
+            width: block.width * drawW,
+            height: block.height * drawH,
+          });
+        }
+      }
+    }
   }
 
   return pdfDoc.save();
+}
+
+/** Map normalized OCR coordinates onto a fitted image rect — exported
+ * for the compose path, which needs the same mapping per packed item. */
+export function mapBlockToRect(
+  block: Pick<OcrBlock, 'x' | 'y' | 'width' | 'height'>,
+  imageRect: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  return {
+    x: imageRect.x + block.x * imageRect.width,
+    y: imageRect.y + block.y * imageRect.height,
+    width: block.width * imageRect.width,
+    height: block.height * imageRect.height,
+  };
 }
 
 /**
@@ -106,7 +145,7 @@ export async function exportDocument(
     throw new Error('Cannot export a document with no pages');
   }
 
-  const bytes = await buildDocumentPdf(doc, pages);
+  const bytes = await buildDocumentPdf(db, doc, pages);
 
   const template = await getSetting(db, FILENAME_TEMPLATE_KEY);
   const fileName = resolveExportFilename(

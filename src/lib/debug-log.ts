@@ -24,6 +24,129 @@ import { Platform } from 'react-native';
 /** Maximum lines retained; oldest dropped first. */
 export const MAX_ENTRIES = 500;
 
+/** The disk mirror's flush debounce (appends on every line would hammer
+ * the filesystem for bursts of log calls). */
+const FLUSH_DELAY_MS = 1500;
+
+/** True once the disk mirror has been merged into the buffer. */
+let loadedFromDisk = false;
+/** Resolves when the in-flight (or settled) disk restore completes —
+ * `logReady()` hands this to callers that must not race the merge. */
+let restorePromise: Promise<void> | null = null;
+/** Bumped by `clear()`: a restore that started before a Clear merges
+ * nothing (the Clear must win, not the stale read). */
+let restoreGeneration = 0;
+/** Pending flush timer, if any. */
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** The on-disk mirror: one JSON `LogEntry` per line under
+ * documents/debug/log.jsonl. Survives process death — the in-memory
+ * buffer alone lost everything on restart, which made "export the log
+ * after a repro" worthless whenever the app had been relaunched
+ * (the OCR hunt, 2026-09-17). */
+function logFile(): File {
+  return new File(new Directory(Paths.document, 'debug'), 'log.jsonl');
+}
+
+/** Restore previously persisted entries into the buffer (once). Kicks
+ * off the async read and merges when it lands — `log()` and `entries()`
+ * stay synchronous, so entries logged while the read is in flight simply
+ * land after the restored ones (the timestamps keep true order in the
+ * text). Best-effort: a missing/corrupt file means starting empty. */
+function ensureLoadedFromDisk(): void {
+  if (loadedFromDisk) {
+    return;
+  }
+  loadedFromDisk = true;
+  const generation = restoreGeneration;
+  const file = logFile();
+  if (!file.exists) {
+    restorePromise = Promise.resolve();
+    return;
+  }
+  restorePromise = file
+    .text()
+    .then((text: string) => {
+      if (generation !== restoreGeneration) {
+        // A clear() happened mid-read — dropping the merge is the point.
+        return;
+      }
+      const restored = parseLogLines(text);
+      if (restored.length === 0) {
+        return;
+      }
+      // Oldest restored first, then anything logged during the read.
+      buffer.unshift(...restored.slice(-MAX_ENTRIES));
+      if (buffer.length > MAX_ENTRIES) {
+        buffer.splice(0, buffer.length - MAX_ENTRIES);
+      }
+    })
+    .catch(() => {
+      // Unreadable file — start empty rather than take logging down.
+    });
+}
+
+/** Parse JSONL text into validated entries; corrupt lines are skipped. */
+function parseLogLines(text: string): LogEntry[] {
+  return text
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .flatMap((line) => {
+      try {
+        const parsed: unknown = JSON.parse(line);
+        if (isLogEntry(parsed)) {
+          return [parsed];
+        }
+      } catch {
+        // Corrupt line — skip it, keep the rest.
+      }
+      return [];
+    });
+}
+
+/** Runtime guard for one restored entry (the file may predate a shape
+ * change — same discipline as any parsed input). */
+function isLogEntry(value: unknown): value is LogEntry {
+  if (typeof value !== 'object' || value == null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.at === 'number' &&
+    (record.level === 'info' || record.level === 'error') &&
+    typeof record.area === 'string' &&
+    typeof record.message === 'string'
+  );
+}
+
+/** Write the buffer to the disk mirror, debounced (see FLUSH_DELAY_MS). */
+function scheduleFlush(): void {
+  if (flushTimer != null) {
+    return;
+  }
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    // Wait for the restore so the write cannot clobber the mirror with
+    // a pre-merge buffer, and skip entirely for an empty one — a clear
+    // must not resurrect the file on the next debounced flush.
+    void logReady().then(() => {
+      if (buffer.length === 0) {
+        return;
+      }
+      try {
+        const dir = new Directory(Paths.document, 'debug');
+        if (!dir.exists) {
+          dir.create({ intermediates: true, idempotent: true });
+        }
+        logFile().write(buffer.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
+      } catch {
+        // A failed mirror write must never take the app down — logging is
+        // diagnostic, not critical.
+      }
+    });
+  }, FLUSH_DELAY_MS);
+}
+
 /** Severity of one log line. */
 export type LogLevel = 'info' | 'error';
 
@@ -40,12 +163,15 @@ export interface LogEntry {
 /** The in-memory buffer, module-scoped. Newest at the end. */
 const buffer: LogEntry[] = [];
 
-/** Append one entry, trimming the buffer to its bound. */
+/** Append one entry, trimming the buffer to its bound, and schedule the
+ * disk mirror. */
 export function log(level: LogLevel, area: string, message: string): void {
+  ensureLoadedFromDisk();
   buffer.push({ at: Date.now(), level, area, message });
   if (buffer.length > MAX_ENTRIES) {
     buffer.splice(0, buffer.length - MAX_ENTRIES);
   }
+  scheduleFlush();
 }
 
 /** Convenience wrappers. */
@@ -68,12 +194,31 @@ export function logThrown(area: string, e: unknown): void {
 
 /** Read a copy of the current buffer, oldest first. */
 export function entries(): readonly LogEntry[] {
+  ensureLoadedFromDisk();
   return buffer;
 }
 
-/** Reset the buffer (tests; a future "clear log" Settings row). */
+/** Await the disk mirror restore before reading the buffer for display
+ * or export — `entries()` is synchronous and would otherwise race the
+ * async merge (the empty-log-on-restart bug, 2026-09-17). */
+export function logReady(): Promise<void> {
+  ensureLoadedFromDisk();
+  return restorePromise ?? Promise.resolve();
+}
+
+/** Reset the buffer AND delete the disk mirror (tests; "clear log"). */
 export function clear(): void {
+  restoreGeneration++;
   buffer.length = 0;
+  loadedFromDisk = true;
+  try {
+    const file = logFile();
+    if (file.exists) {
+      file.delete();
+    }
+  } catch {
+    // Same deal as a failed write: diagnostics never take the app down.
+  }
 }
 
 /** Format one entry as one line of the export. */
@@ -109,6 +254,7 @@ export function debugLogDir(): Directory {
  * can be re-sent without regenerating.
  */
 export async function exportAndShareLog(): Promise<{ uri: string }> {
+  await logReady();
   const dir = debugLogDir();
   if (!dir.exists) {
     dir.create({ intermediates: true, idempotent: true });

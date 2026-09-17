@@ -11,7 +11,7 @@ import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
@@ -39,6 +39,7 @@ import {
     type TagRow,
 } from '@/lib/db/queries';
 import { fetchReceiptData, saveReceiptData } from '@/lib/db/ocr-queries';
+import { runOcrForDocument } from '@/lib/ocr/pipeline';
 import { logInfo, logThrown } from '@/lib/debug-log';
 import type { ReceiptData, ScanDocument, ScanPage } from '@/lib/model';
 import { scanPages } from '@/lib/scanner';
@@ -68,11 +69,19 @@ export default function DocumentDetailScreen() {
   // Tags on this document (Phase 2).
   const [tags, setTags] = useState<TagRow[]>([]);
   const [addingTag, setAddingTag] = useState(false);
+  // Real bottom inset for the pinned action bar — `bottom` on an absolute
+  // view is measured from its parent's edge, and SafeAreaView padding does
+  // NOT offset it (that cost the previous fix: the bar sat under the
+  // Android gesture bar). Same technique as Library's selection toolbar.
+  const insets = useSafeAreaInsets();
   // Receipt fields for the first page (OCR, plan §6). null = OCR hasn't
   // produced anything to show; 'pending' = the quiet reading state while
   // the background pipeline works; a ReceiptData = extracted fields,
   // editable — corrections set userEdited so a re-run can't clobber them.
   const [receipt, setReceipt] = useState<ReceiptData | 'pending' | null>(null);
+  // True while the explicit "Read text" button is re-running recognition
+  // for this document (busy state on the button).
+  const [reading, setReading] = useState(false);
 
   const load = useCallback(async () => {
     if (id == null) {
@@ -91,10 +100,13 @@ export default function DocumentDetailScreen() {
     setDocument(doc);
     setPages(docPages);
     setTags(docTags);
-    // Receipt fields follow OCR (plan §6): a first page with a receipt row
-    // shows it; no row yet means the background pipeline is still working
-    // — 'pending' renders the quiet reading state and a short poll picks
-    // the result up when it lands.
+    // Receipt-style fields follow OCR (plan §6): a first page with an
+    // extracted row shows it; no row yet means the background pipeline
+    // may still be working — 'pending' renders the quiet reading state and
+    // two polls (short + long) pick the result up when it lands. If nothing
+    // lands, the status line keeps "Reading document…" with the Read-text
+    // button beside it — pre-OCR documents have no results and no
+    // automatic path to get them; the button is that path.
     const firstPage = docPages[0];
     if (firstPage != null) {
       const extracted = await fetchReceiptData(db, firstPage.id);
@@ -102,15 +114,18 @@ export default function DocumentDetailScreen() {
         setReceipt(extracted);
       } else {
         setReceipt('pending');
-        setTimeout(() => {
-          fetchReceiptData(db, firstPage.id)
-            .then((late) => {
-              if (late != null) {
-                setReceipt(late);
-              }
-            })
-            .catch((e: unknown) => logThrown('receipt-poll', e));
-        }, 2500);
+        const poll = async () => {
+          try {
+            const late = await fetchReceiptData(db, firstPage.id);
+            if (late != null) {
+              setReceipt(late);
+            }
+          } catch (e: unknown) {
+            logThrown('receipt-poll', e);
+          }
+        };
+        setTimeout(() => void poll(), 2500);
+        setTimeout(() => void poll(), 9000);
       }
     } else {
       setReceipt(null);
@@ -197,6 +212,35 @@ export default function DocumentDetailScreen() {
     router.push(`/compose?id=${document.id}`);
   }
 
+  /** Explicit OCR for THIS document (user-requested 2026-09-17): re-runs
+   * the pipeline over its pages on demand. This is the path pre-OCR
+   * documents (saved before the engine shipped) have to get a text layer
+   * and receipt fields — nothing back-fills them otherwise — and the
+   * manual control for "I want THIS page read". Re-runs refresh the raw
+   * text but never clobber corrected fields (respectUserEdits inside
+   * the pipeline). */
+  async function onReadText(): Promise<void> {
+    if (id == null || reading) {
+      return;
+    }
+    setReading(true);
+    try {
+      await runOcrForDocument(db, id);
+      const firstPage = pages?.[0];
+      if (firstPage != null) {
+        const extracted = await fetchReceiptData(db, firstPage.id);
+        if (extracted != null) {
+          setReceipt(extracted);
+        }
+      }
+    } catch (e: unknown) {
+      logThrown('read-text', e);
+      Alert.alert('Read text failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setReading(false);
+    }
+  }
+
   /** Persist a correction to one receipt field (plan §6: every extracted
    * value is editable; corrections must never be clobbered by a re-run).
    * `respectUserEdits` is false here — the user's own edit IS the edit. */
@@ -222,10 +266,17 @@ export default function DocumentDetailScreen() {
 
   const receiptCard =
     receipt === 'pending' ? (
-      <View style={styles.tagBar}>
-        <ThemedText type="small" style={{ color: theme.textSecondary }}>
-          Reading receipt…
+      <View style={styles.receiptBar}>
+        <ThemedText type="small" style={[styles.receiptHint, { color: theme.textSecondary }]}>
+          Reading document…
         </ThemedText>
+        <AppButton
+          label={reading ? 'Reading…' : 'Read text'}
+          variant="outline"
+          onPress={() => void onReadText()}
+          disabled={reading}
+          loading={reading}
+        />
       </View>
     ) : receipt == null ? null : (
       <View style={styles.receiptBar}>
@@ -377,20 +428,23 @@ export default function DocumentDetailScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      {/* Same centered MaxContentWidth column every other screen uses —
-          without it the header/content span edge-to-edge on wide screens
-          while Home/Library/Settings center in (user request 2026-09-16). */}
-      <SafeAreaView edges={['top']} style={styles.safeArea}>
+      {/* One SafeAreaView wraps the WHOLE column (header → receipt →
+          tags → pages → actions). The earlier "align the header" change
+          closed it right after the header, leaving every sibling below
+          (receipt bar, tags, the page list, the action bar) as a child
+          of the row-flex MaxContentWidth scaffold — the screen laid out
+          horizontally, squeezing pages and misplacing buttons (regression
+          fixed 2026-09-17). */}
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <ScreenHeader title={document.title} />
-      </SafeAreaView>
-      {/* Receipt fields (OCR, plan §6): extracted values as editable
-          inputs — "design the receipt detail screen around correction,
-          not display". Corrections set userEdited so an OCR re-run never
-          clobbers them. 'pending' is the quiet reading state. */}
-      {!reordering && receiptCard}
-      {/* Tags row (Phase 2): chips plus add. Hidden while reordering —
-          reordering is about the pages, not the metadata. */}
-      {!reordering && (
+        {/* Receipt fields (OCR, plan §6): extracted values as editable
+            inputs — "design the receipt detail screen around correction,
+            not display". Corrections set userEdited so an OCR re-run
+            never clobbers them. 'pending' is the quiet reading state. */}
+        {!reordering && receiptCard}
+        {/* Tags row (Phase 2): chips plus add. Hidden while reordering —
+            reordering is about the pages, not the metadata. */}
+        {!reordering && (
         <View style={styles.tagBar}>
           {tags.map((tag) => (
             <Pressable
@@ -472,7 +526,7 @@ export default function DocumentDetailScreen() {
           <AppCard style={styles.pageCard}>
             <Image
               source={{ uri: item.imagePath }}
-              style={styles.pageImage}
+              style={[styles.pageImage, { aspectRatio: item.widthPx / item.heightPx }]}
               contentFit="contain"
               recyclingKey={item.id}
               transition={150}
@@ -485,48 +539,50 @@ export default function DocumentDetailScreen() {
       />
       )}
 
-      <SafeAreaView style={styles.actions} edges={['bottom']}>
-        {reordering ? (
-          <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow)]}>
-            <AppButton label="Done" onPress={() => void commitReorder()} style={styles.reorderDone} />
-            <AppButton label="Cancel" variant="outline" onPress={cancelReorder} style={styles.reorderDone} />
-          </ThemedView>
-        ) : (
-          <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow)]}>
-            <ActionBarItem
-              icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }}
-              label="Send"
-              color={theme.accent}
-              onPress={onExport}
-            />
-            <ActionBarItem
-              icon={{ ios: 'pencil', android: 'edit' }}
-              label="Rename"
-              color={theme.text}
-              onPress={() => setRenaming(true)}
-            />
-            <ActionBarItem
-              icon={{ ios: 'arrow.up.arrow.down', android: 'swap_vert' }}
-              label="Reorder"
-              color={theme.text}
-              onPress={enterReorder}
-              disabled={(pages?.length ?? 0) < 2}
-            />
-            <ActionBarItem
-              icon={{ ios: 'doc.badge.plus', android: 'note_add' }}
-              label={adding ? 'Adding…' : 'Add pages'}
-              color={theme.text}
-              onPress={onAddPages}
-              disabled={adding}
-            />
-            <ActionBarItem
-              icon={{ ios: 'trash', android: 'delete' }}
-              label="Delete"
-              color={theme.danger}
-              onPress={onDelete}
-            />
-          </ThemedView>
-        )}
+      {/* Action bar: floating pill pinned above the system nav/gesture
+          area (measured inset — see the comment at `insets`), list
+          scrolling beneath it. Swaps to Done/Cancel while reordering. */}
+      {reordering ? (
+        <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow), { bottom: insets.bottom + Spacing.two }]}>
+          <AppButton label="Done" onPress={() => void commitReorder()} style={styles.reorderDone} />
+          <AppButton label="Cancel" variant="outline" onPress={cancelReorder} style={styles.reorderDone} />
+        </ThemedView>
+      ) : (
+        <ThemedView type="backgroundElement" style={[styles.actionBar, CardShadow(theme.shadow), { bottom: insets.bottom + Spacing.two }]}>
+          <ActionBarItem
+            icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }}
+            label="Send"
+            color={theme.accent}
+            onPress={onExport}
+          />
+          <ActionBarItem
+            icon={{ ios: 'pencil', android: 'edit' }}
+            label="Rename"
+            color={theme.text}
+            onPress={() => setRenaming(true)}
+          />
+          <ActionBarItem
+            icon={{ ios: 'arrow.up.arrow.down', android: 'swap_vert' }}
+            label="Reorder"
+            color={theme.text}
+            onPress={enterReorder}
+            disabled={(pages?.length ?? 0) < 2}
+          />
+          <ActionBarItem
+            icon={{ ios: 'doc.badge.plus', android: 'note_add' }}
+            label={adding ? 'Adding…' : 'Add pages'}
+            color={theme.text}
+            onPress={onAddPages}
+            disabled={adding}
+          />
+          <ActionBarItem
+            icon={{ ios: 'trash', android: 'delete' }}
+            label="Delete"
+            color={theme.danger}
+            onPress={onDelete}
+          />
+        </ThemedView>
+      )}
       </SafeAreaView>
 
       <PromptDialog
@@ -650,6 +706,9 @@ const styles = StyleSheet.create({
   listContent: {
     padding: Spacing.three,
     gap: Spacing.three,
+    // Clear the floating action bar so the last page scrolls fully
+    // above it (bar ≈ 64px + inset + gap).
+    paddingBottom: 120,
   },
   tagBar: {
     flexDirection: 'row',
@@ -660,9 +719,14 @@ const styles = StyleSheet.create({
   },
   receiptBar: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.two,
+  },
+  receiptHint: {
+    flexShrink: 1,
   },
   receiptInput: {
     flex: 1,
@@ -713,17 +777,23 @@ const styles = StyleSheet.create({
   },
   pageImage: {
     width: '100%',
-    aspectRatio: 3 / 4,
+    // The scan's own aspect ratio, set inline per page (each page knows
+    // its dimensions) — a fixed 3:4 cropped tall receipts and stretched
+    // wide ones (part of the 2026-09-17 layout regression).
+    alignSelf: 'stretch',
+    minHeight: 120,
     borderRadius: Radius.small,
     backgroundColor: '#80808040',
   },
-  actions: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
-  },
   // Same pill silhouette as the floating tab bar, sized for four icon+label
-  // items instead of three tab items.
+  // items instead of three tab items. `bottom` is set inline from the
+  // measured safe-area inset (see the `insets` comment in the component) —
+  // a static bottom here would tuck the bar under the system nav area
+  // on gesture-nav devices.
   actionBar: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
     flexDirection: 'row',
     borderRadius: Radius.pill,
     paddingVertical: Spacing.two,

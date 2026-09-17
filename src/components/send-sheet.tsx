@@ -368,7 +368,7 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
                 />
                 <View style={styles.actionsRow}>
                   <AppButton
-                    label="OS share sheet"
+                    label="Share"
                     variant="outline"
                     onPress={onShareViaOs}
                     style={styles.grow}

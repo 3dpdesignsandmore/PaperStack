@@ -3,9 +3,9 @@
  * reached from Home's header gear button — it is no longer a tab. Gains
  * the capture settings that used to live on the old Scan tab: multi-page
  * capture and photo quality are wired to `useCapture()`'s scanner call;
- * OCR has no pipeline yet (the "OCR is on-device" plan is still ahead), so
- * it stays a "Coming soon" row rather than a switch with nothing behind
- * it.
+ * the OCR switch gates the automatic read-a-receipt flow (the engine
+ * itself ships in every build — turning it off only stops the automatic
+ * pass on new scans; the document screen's Read-text button still works).
  */
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -37,6 +37,7 @@ import { useThemePreferences } from '@/hooks/theme-provider';
 import { useTheme } from '@/hooks/use-theme';
 import { createAndShareBackup } from '@/lib/backup';
 import { DATABASE_NAME } from '@/lib/db/migrations';
+import { OCR_ENABLED_KEY } from '@/lib/db/ocr-queries';
 import {
     getSetting,
     SCAN_MULTI_PAGE_KEY,
@@ -107,6 +108,9 @@ export default function SettingsScreen() {
   const [editingPrefix, setEditingPrefix] = useState(false);
   const [multiPage, setMultiPage] = useState(true);
   const [quality, setQuality] = useState(DEFAULT_QUALITY);
+  // OCR is on by default (matching the pipeline's absent-key default) —
+  // the switch stops the automatic pass on new scans.
+  const [ocrEnabled, setOcrEnabled] = useState(true);
   // Filename template (Phase 7): null while loading, '' meaning
   // "unset" (the placeholder shows the default).
   const [template, setTemplate] = useState<string | null>(null);
@@ -118,17 +122,19 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       (async () => {
-        const [storedPrefix, storedMultiPage, storedQuality, storedTemplate] =
+        const [storedPrefix, storedMultiPage, storedQuality, storedTemplate, storedOcr] =
           await Promise.all([
             getSetting(db, SCAN_NAME_PREFIX_KEY),
             getSetting(db, SCAN_MULTI_PAGE_KEY),
             getSetting(db, SCAN_QUALITY_KEY),
             getSetting(db, FILENAME_TEMPLATE_KEY),
+            getSetting(db, OCR_ENABLED_KEY),
           ]);
         setPrefix(storedPrefix);
         setMultiPage(storedMultiPage !== 'false');
         setQuality(storedQuality == null ? DEFAULT_QUALITY : Number(storedQuality));
         setTemplate(storedTemplate);
+        setOcrEnabled(storedOcr !== 'false');
       })().catch((e: unknown) => logThrown('settings-load', e));
     }, [db]),
   );
@@ -142,6 +148,11 @@ export default function SettingsScreen() {
   async function toggleMultiPage(value: boolean) {
     setMultiPage(value);
     await setSetting(db, SCAN_MULTI_PAGE_KEY, value ? 'true' : 'false');
+  }
+
+  async function toggleOcr(value: boolean) {
+    setOcrEnabled(value);
+    await setSetting(db, OCR_ENABLED_KEY, value ? 'true' : 'false');
   }
 
   async function chooseQuality(value: number) {
@@ -280,9 +291,10 @@ export default function SettingsScreen() {
               <View style={styles.rowText}>
                 <ThemedText type="defaultSemiBold">Read text (OCR)</ThemedText>
                 <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  Coming soon — a searchable text layer for exported PDFs.
+                  Read scanned text as you save so exports are searchable. Read-text on a document works either way.
                 </ThemedText>
               </View>
+              <Switch value={ocrEnabled} onValueChange={toggleOcr} />
             </SettingsRow>
           </AppCard>
 
@@ -333,8 +345,17 @@ export default function SettingsScreen() {
                   A plain-text log of recent app activity (no document content) to send to support.
                 </ThemedText>
               </View>
+              <AppButton label="View" variant="outline" onPress={() => router.push('/log')} />
+            </SettingsRow>
+            <SettingsRow last>
+              <View style={styles.rowText}>
+                <ThemedText type="defaultSemiBold">Export log</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Write the log to a file and open the share sheet.
+                </ThemedText>
+              </View>
               <AppButton
-                label={exportingLog ? 'Exporting…' : 'Export log'}
+                label={exportingLog ? 'Exporting…' : 'Export'}
                 variant="outline"
                 onPress={() => void onExportLog()}
                 disabled={exportingLog}

@@ -6,6 +6,7 @@ import {
     SchibstedGrotesk_700Bold,
 } from '@expo-google-fonts/schibsted-grotesk';
 import { useFonts } from 'expo-font';
+import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
@@ -13,6 +14,7 @@ import { useEffect } from 'react';
 
 import { StaleBuildGuard } from '@/components/stale-build-guard';
 import { ThemeProvider } from '@/hooks/theme-provider';
+import { logInfo } from '@/lib/debug-log';
 import { DATABASE_NAME, migrate } from '@/lib/db/migrations';
 
 SplashScreen.preventAutoHideAsync();
@@ -53,6 +55,13 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // First line of every session: guarantees the diagnostic log has a
+  // verifiable heartbeat (and its disk mirror gets created) even if the
+  // user opens the log viewer before doing anything else.
+  useEffect(() => {
+    logInfo('app', `started (v${Constants.expoConfig?.version ?? 'unknown'})`);
+  }, []);
 
   if (!fontsLoaded && fontError == null) {
     return null;

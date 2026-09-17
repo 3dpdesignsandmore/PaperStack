@@ -190,14 +190,30 @@ export const THEME_APPEARANCE_KEY = 'theme_appearance';
  * page id in that document exactly once; indices are compacted to
  * 0..n-1 inside one transaction, so a mid-flight failure leaves the
  * previous order intact.
+ *
+ * The UNIQUE (document_id, page_index) constraint is enforced per
+ * STATEMENT, not at commit — writing finals directly collides whenever
+ * a row moves to an index another row still holds (any move other than
+ * strictly to the end). So: phase one parks every row at a negative
+ * index (distinct, and never a legal final value), phase two writes
+ * the finals. Collisions are impossible in either phase.
  */
 export async function reorderPages(
   db: SQLiteDatabase,
   documentId: string,
   orderedPageIds: string[],
 ): Promise<void> {
+  const count = orderedPageIds.length;
   await db.withTransactionAsync(async () => {
-    for (let index = 0; index < orderedPageIds.length; index++) {
+    // Phase 1: park at distinct negatives (−1 … −count).
+    for (let index = 0; index < count; index++) {
+      await db.runAsync(
+        'UPDATE scan_pages SET page_index = ? WHERE id = ? AND document_id = ?',
+        [index - count, orderedPageIds[index], documentId],
+      );
+    }
+    // Phase 2: finals (0 … count−1), each written exactly once.
+    for (let index = 0; index < count; index++) {
       await db.runAsync(
         'UPDATE scan_pages SET page_index = ? WHERE id = ? AND document_id = ?',
         [index, orderedPageIds[index], documentId],

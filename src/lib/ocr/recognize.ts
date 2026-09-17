@@ -55,6 +55,8 @@ export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
   if (requireOptionalNativeModule('NitroOcr') == null) {
     throw new Error('OCR needs a newer app build (engine module unavailable).');
   }
+  // The gate passed — the module IS in this binary. A failure past this
+  // point is an engine error, not a stale build (the pipeline logs it).
 
   // Metro CJS interop: the package resolves as either the module namespace
   // itself or a `{ default: namespace }` wrapper (same dance as

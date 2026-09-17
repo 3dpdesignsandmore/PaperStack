@@ -16,6 +16,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 import { getSetting } from '@/lib/db/queries';
+import { fetchOcrResult } from '@/lib/db/ocr-queries';
 import {
     LETTER,
     packColumns,
@@ -24,8 +25,9 @@ import {
     type PackOptions,
 } from '@/lib/layout/pack-columns';
 import type { ScanDocument, ScanPage } from '@/lib/model';
-import { sanitizeTitle } from '@/lib/pdf/export-document';
+import { mapBlockToRect, sanitizeTitle } from '@/lib/pdf/export-document';
 import { FILENAME_TEMPLATE_KEY, resolveExportFilename } from '@/lib/pdf/filename';
+import { drawInvisibleText } from '@/lib/pdf/invisible-text';
 
 /** Options for building a stacked composition PDF. */
 export interface ComposeOptions {
@@ -127,6 +129,7 @@ function imageUrisByItem(pages: ScanPage[]): Map<string, string> {
  * and per-item caption text.
  */
 export async function buildStackedPdf(
+  db: SQLiteDatabase | null,
   documents: ScanDocument[],
   pages: ScanPage[],
   options: ComposeOptions,
@@ -170,6 +173,24 @@ export async function buildStackedPdf(
         height: item.height,
       });
 
+      // Searchable layer: each item's own OCR blocks, mapped from
+      // normalized image space into the packed rect. Blocks scale with
+      // the pack — a 6-up tile's text is smaller but still finds the
+      // same words in the same places.
+      if (db != null) {
+        const ocr = await fetchOcrResult(db, item.id);
+        if (ocr != null) {
+          for (const block of ocr.blocks) {
+            drawInvisibleText(
+              pdfPage,
+              font,
+              block.text,
+              mapBlockToRect(block, { x: item.x, y: item.y, width: item.width, height: item.height }),
+            );
+          }
+        }
+      }
+
       // The packer reserves `CAPTION_HEIGHT` below every item when
       // `captions` is on (see `composeLayout`), so every item has room.
       if (options.captions) {
@@ -211,7 +232,7 @@ export async function exportComposition(
     throw new Error('Cannot stack a selection with no pages');
   }
 
-  const bytes = await buildStackedPdf(documents, pages, options);
+  const bytes = await buildStackedPdf(db, documents, pages, options);
   const title = combinedTitle(documents);
   const sheetCount = composeLayout(pages, options.columns, options.captions, options.maxPerColumn).pages.length;
   const template = await getSetting(db, FILENAME_TEMPLATE_KEY);

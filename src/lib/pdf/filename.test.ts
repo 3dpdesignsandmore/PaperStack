@@ -47,10 +47,19 @@ describe('resolveExportFilename', () => {
 
   it('runs the expanded template through the sanitizer', () => {
     // A sanitizer that strips spaces, as sanitizeTitle-family ones do.
+    // `{date}` expands from the real clock, so the expectation computes
+    // today's stamp the same way rather than hardcoding a calendar day
+    // (the hardcoded 2026-09-16 broke on rollover).
     const noSpaces = (value: string) => value.replace(/\s+/g, '');
+    const today = (() => {
+      const d = new Date();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${d.getFullYear()}-${month}-${day}`;
+    })();
     expect(
       resolveExportFilename('{title} {date}', 'Tax Docs', 4, 1, noSpaces),
-    ).toBe('TaxDocs2026-09-16');
+    ).toBe(`TaxDocs${today}`);
   });
 
   it('falls back to the sanitized title when the template sanitizes to nothing', () => {
