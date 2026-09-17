@@ -172,6 +172,7 @@ const styles = StyleSheet.create({
   },
   actionBar: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: Spacing.two,
     padding: Spacing.two,
     borderTopWidth: StyleSheet.hairlineWidth,
