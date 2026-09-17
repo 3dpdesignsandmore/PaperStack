@@ -13,6 +13,7 @@
  * the recipient list it loads when opened.
  */
 import { useSQLiteContext } from 'expo-sqlite';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -72,9 +73,13 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
   const [channel, setChannel] = useState<RecipientChannel>(RecipientChannel.Email);
   const [newLabel, setNewLabel] = useState('');
   const [newValue, setNewValue] = useState('');
+  /** Set once the OS app took over (or the composer was cancelled out).
+   * null = still composing. See {@link HandoffState}. */
+  const [handoff, setHandoff] = useState<HandoffState | null>(null);
 
   useResetOnOpen(visible, () => {
     setSaveMode({ kind: 'idle' });
+    setHandoff(null);
     setNewLabel('');
     setNewValue('');
     setPicked(null);
@@ -130,7 +135,12 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
       setSaveMode({ kind: 'picking-channel', label: recipient.label, value: '', channel });
       return;
     }
-    onClose();
+    // Sent or cancelled-by-user: the OS app took over either way (the
+    // composer was opened, or the messaging app came forward). Show the
+    // handoff state instead of closing — the user gets an explicit
+    // signal that the handoff happened, and a cancelled compose is
+    // honestly labelled so they can retry rather than wonder.
+    setHandoff({ channel, cancelled: outcome.status === 'cancelled' });
   }
 
   /** A recipient was picked from the picker: close it and populate the
@@ -239,7 +249,48 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
             PDF ready: {subject}
           </ThemedText>
 
-          {saveMode.kind === 'picking-channel' ? (
+          {handoff != null ? (
+            <View style={styles.saveForm}>
+              <SymbolView
+                name={
+                  handoff.cancelled
+                    ? { ios: 'xmark.circle', android: 'cancel' }
+                    : { ios: 'checkmark.circle.fill', android: 'check_circle' }
+                }
+                size={40}
+                tintColor={handoff.cancelled ? theme.warning : theme.success}
+              />
+              <ThemedText type="defaultSemiBold">
+                {handoff.cancelled
+                  ? 'Composer was closed without sending'
+                  : handoff.channel === RecipientChannel.Email
+                    ? 'Opened in your email app'
+                    : 'Opened in your messaging app'}
+              </ThemedText>
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                {handoff.cancelled
+                  ? 'Nothing was sent. Send again to retry, or Done to close.'
+                  : handoff.channel === RecipientChannel.Email
+                    ? 'Your email app has the message with the PDF attached — press send there to finish.'
+                    : 'Your messaging app has the number filled in — the file sends from the OS share sheet if you need it.'}
+              </ThemedText>
+              <View style={styles.actionsRow}>
+                {handoff.cancelled && (
+                  <AppButton
+                    label="Send again"
+                    variant="outline"
+                    onPress={() => setHandoff(null)}
+                    style={styles.grow}
+                  />
+                )}
+                <AppButton
+                  label="Done"
+                  onPress={onClose}
+                  style={handoff.cancelled ? styles.grow : undefined}
+                />
+              </View>
+            </View>
+          ) : saveMode.kind === 'picking-channel' ? (
             <View style={styles.saveForm}>
               <ThemedText type="defaultSemiBold">
                 {saveMode.channel === RecipientChannel.Email ? 'Add an email' : 'Add a phone number'}
