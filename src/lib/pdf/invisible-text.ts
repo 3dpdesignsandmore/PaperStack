@@ -35,11 +35,13 @@ const MIN_FONT_SIZE = 4;
 /**
  * Write one invisible text block onto a page.
  *
- * `block` is the OCR text with its rect already mapped into PDF page
- * coordinates (points, bottom-left origin) by the caller — for a fitted
- * image that means scaling normalized block coordinates by the drawn
- * image's rect and flipping y (OCR origin is top-left; PDF's is
- * bottom-left).
+ * `rect` is the block's position ALREADY mapped into PDF page
+ * coordinates (points, bottom-left origin) by the caller — see
+ * `mapBlockToRect`, which owns that mapping and the y-axis flip.
+ * `rect.y` is the rect's BOTTOM edge, not its top: the first line's
+ * baseline is placed at `rect.y + rect.height - fontSize`, so a
+ * single-line block whose font fills its height sits exactly on
+ * `rect.y`.
  *
  * Multi-line text (the block's own embedded newlines) becomes one BT/ET
  * block with successive `Td` offsets — a fraction of first-line size
@@ -86,8 +88,9 @@ export function drawInvisibleText(
                 beginText(),
                 setTextRenderingMode(TextRenderingMode.Invisible),
                 setFontAndSize(fontKey, fontSize),
-                // Baseline sits one lineHeight up from the block's top
-                // edge (y here is the TOP of the rect; flip inside).
+                // First baseline: one font size down from the rect's top
+                // edge (`rect.y + rect.height`), i.e. the first line sits
+                // inside the rect rather than above it.
                 moveText(rect.x, rect.y + rect.height - fontSize),
                 showText(encodedLine),
                 endText(),

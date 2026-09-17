@@ -96,12 +96,12 @@ export async function buildDocumentPdf(
       const ocr = await fetchOcrResult(db, page.id);
       if (ocr != null) {
         for (const block of ocr.blocks) {
-          drawInvisibleText(pdfPage, font, block.text, {
-            x: drawX + block.x * drawW,
-            y: drawY + block.y * drawH,
-            width: block.width * drawW,
-            height: block.height * drawH,
-          });
+          drawInvisibleText(
+            pdfPage,
+            font,
+            block.text,
+            mapBlockToRect(block, { x: drawX, y: drawY, width: drawW, height: drawH }),
+          );
         }
       }
     }
@@ -110,15 +110,28 @@ export async function buildDocumentPdf(
   return pdfDoc.save();
 }
 
-/** Map normalized OCR coordinates onto a fitted image rect — exported
- * for the compose path, which needs the same mapping per packed item. */
+/**
+ * Map normalized OCR coordinates onto a fitted image rect. The single
+ * place the y-axis flip happens — both export paths call this, so a fix
+ * here fixes both.
+ *
+ * OCR block coordinates are normalized 0..1 measured DOWN from the image's
+ * TOP edge. PDF user space measures UP from the page's BOTTOM edge, and
+ * `imageRect.y` is the drawn image's bottom edge. The block's bottom edge
+ * therefore sits `(1 - y - height)` of the image height above it.
+ *
+ * Getting this wrong mirrors the text layer vertically: the result still
+ * selects and still copies, but returns the text from the opposite end of
+ * the page — which is how it shipped until 2026-09-17, when a business
+ * card selected at the top returned the two lines from its bottom.
+ */
 export function mapBlockToRect(
   block: Pick<OcrBlock, 'x' | 'y' | 'width' | 'height'>,
   imageRect: { x: number; y: number; width: number; height: number },
 ): { x: number; y: number; width: number; height: number } {
   return {
     x: imageRect.x + block.x * imageRect.width,
-    y: imageRect.y + block.y * imageRect.height,
+    y: imageRect.y + (1 - block.y - block.height) * imageRect.height,
     width: block.width * imageRect.width,
     height: block.height * imageRect.height,
   };
