@@ -8,8 +8,10 @@ import { toDocumentKind, type LibraryEntry, type ScanDocument, type ScanPage } f
 
 /**
  * All documents, newest first, each with its page count, first page
- * thumbnail, and tag names. `search` filters by title substring via
- * SQLite `LIKE` (escaped; ASCII-case-insensitive by default collation).
+ * thumbnail, and tag names. `search` filters by title OR tag substring
+ * via SQLite `LIKE` (escaped; ASCII-case-insensitive by default
+ * collation) — a single term hits both, so "taxes" finds the document
+ * titled "Taxes 2026" AND every document tagged "taxes".
  */
 export async function fetchLibrary(
   db: SQLiteDatabase,
@@ -35,9 +37,15 @@ export async function fetchLibrary(
                FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
               WHERE dt.document_id = d.id) AS tagNames
      FROM scan_documents d
-     ${searching ? "WHERE d.title LIKE ? ESCAPE '\\'" : ''}
+     ${
+       searching
+         ? `WHERE (d.title LIKE ? ESCAPE '\\'
+              OR EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
+                          WHERE dt.document_id = d.id AND t.name LIKE ? ESCAPE '\\'))`
+         : ''
+     }
      ORDER BY d.created_at DESC`,
-    searching ? [`%${escapeLike(term)}%`] : [],
+    searching ? [`%${escapeLike(term)}%`, `%${escapeLike(term)}%`] : [],
   );
 
   return rows.map((row) => ({

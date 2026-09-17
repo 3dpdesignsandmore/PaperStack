@@ -13,7 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppButton } from '@/components/app-button';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { TAB_BAR_GAP, TAB_BAR_HEIGHT } from '@/components/floating-tab-bar';
+import { TAB_BAR_GAP, TAB_BAR_HEIGHT, useTabBarSlot } from '@/components/floating-tab-bar';
 import { PaperThumb } from '@/components/paper-thumb';
 import { SaveScanDialog } from '@/components/save-scan-dialog';
 import { ScreenTitle } from '@/components/screen-title';
@@ -60,6 +60,10 @@ export default function LibraryScreen() {
   // True while the batch delete is writing — the toolbar's actions
   // disable so a slow delete can't be double-tapped.
   const [deleting, setDeleting] = useState(false);
+  // Claim the floating-bar slot while the selection toolbar is visible:
+  // the nav tab bar yields (see floating-tab-bar.tsx's TabBarSlotContext)
+  // so THIS toolbar is the one the user sees in that position.
+  useTabBarSlot(selecting && selected.size > 0);
 
   const load = useCallback(async () => {
     setEntries(await fetchLibrary(db, search));
@@ -204,14 +208,16 @@ export default function LibraryScreen() {
               <ThemedView style={styles.headerActions}>
                 <IconButton accessibilityLabel="Import from photos" onPress={() => void onImportPhotos()} />
                 {/*
-                 * "Cancel", not "Done" — this always discards the
-                 * selection and exits; it never finishes anything (the
-                 * bottom "Combine N..." bar is the actual completion
-                 * action). "Done" implied it would confirm/complete,
-                 * which made it look broken once items were selected.
+                 * "Multi-select", not "Combine" — the button describes the MODE
+                 * (select several documents), not one of the several actions
+                 * that mode unlocks. "Cancel" because this button's only job
+                 * is mode entry (a long-press on a card also enters) and
+                 * bail-out: completing an actual action — Send or Delete in
+                 * the toolbar — exits the mode itself, so the header never
+                 * needs a "confirm" reading.
                  */}
                 <AppButton
-                  label={selecting ? 'Cancel' : 'Combine'}
+                  label={selecting ? 'Cancel' : 'Multi-select'}
                   variant="outline"
                   onPress={() => (selecting ? exitSelection() : enterSelection())}
                 />
@@ -236,12 +242,12 @@ export default function LibraryScreen() {
               ]}
               value={search}
               onChangeText={setSearch}
-              placeholder="Search by title"
+              placeholder="Search titles and tags"
               placeholderTextColor={theme.textSecondary}
               returnKeyType="search"
               autoCorrect={false}
               underlineColorAndroid="transparent"
-              accessibilityLabel="Search documents by title"
+              accessibilityLabel="Search documents by title or tag"
             />
             {search.length > 0 && (
               <Pressable
@@ -266,7 +272,7 @@ export default function LibraryScreen() {
             <ThemedView style={styles.emptyState}>
               <ThemedText type="subtitle">No matches</ThemedText>
               <ThemedText type="small" style={[styles.emptyHint, { color: theme.textSecondary }]}>
-                {`Nothing is titled "${search.trim()}".`}
+                {`Nothing is titled or tagged "${search.trim()}".`}
               </ThemedText>
             </ThemedView>
           ) : (
@@ -319,13 +325,19 @@ export default function LibraryScreen() {
             ) : (
               <>
                 <AppButton
-                  label={`Combine ${selected.size}`}
-                  onPress={() =>
+                  label={`Send ${selected.size}`}
+                  onPress={() => {
+                    // Exit selection BEFOCE navigating: the composing happens
+                    // on the send screen from here, and when the user comes
+                    // back Library must be in its plain state — not still in
+                    // multi-select with a stale selection.
+                    const ids = Array.from(selected);
+                    exitSelection();
                     router.push({
                       pathname: '/compose',
-                      params: { ids: Array.from(selected).join(',') },
-                    })
-                  }
+                      params: { ids: ids.join(',') },
+                    });
+                  }}
                 />
                 <AppButton
                   label="Delete"

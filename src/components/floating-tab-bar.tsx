@@ -19,7 +19,7 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Keyboard, Platform, Pressable, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -36,6 +36,45 @@ export const TAB_BAR_HEIGHT = 64;
 /** Gap between the bar and the safe-area bottom edge. */
 export const TAB_BAR_GAP = Spacing.two;
 
+/**
+ * Screens inside the tabs can render their own floating bar (Library's
+ * selection toolbar) in the same spot as this nav bar. Because React
+ * Navigation renders the tab bar AFTER screen content, both would stack —
+ * the nav bar painting on top, hiding the screen's toolbar. A screen
+ * claims the slot while its own toolbar should be the visible one; the
+ * nav bar reads the claim and stands down (the scan dialog still mounts —
+ * see the keyboard note above).
+ *
+ * The provider lives in `(tabs)/_layout.tsx`, ABOVE the Tabs navigator:
+ * that's the only spot shared by both the tab screens (which claim) and
+ * the bar (which yields). Neither can see a provider placed inside the
+ * other.
+ */
+const TabBarSlotContext = createContext<{ claimed: boolean; setClaimed: (v: boolean) => void }>({
+  claimed: false,
+  setClaimed: () => {},
+});
+
+/** Mount this above the Tabs navigator — see {@link TabBarSlotContext}. */
+export function TabBarSlotProvider({ children }: { children: ReactNode }) {
+  const [claimed, setClaimed] = useState(false);
+  const value = { claimed, setClaimed };
+  return <TabBarSlotContext.Provider value={value}>{children}</TabBarSlotContext.Provider>;
+}
+
+/**
+ * Claim the floating-bar slot for the calling screen's own toolbar while
+ * `claimed` is true; releases it automatically on unmount (tab switch) or
+ * when the argument flips back to false.
+ */
+export function useTabBarSlot(claimed: boolean): void {
+  const { setClaimed } = useContext(TabBarSlotContext);
+  useEffect(() => {
+    setClaimed(claimed);
+    return () => setClaimed(false);
+  }, [claimed, setClaimed]);
+}
+
 /** Icon per route name, matching `screen-header.tsx`'s SymbolView usage. */
 const ICONS: Record<string, SymbolViewProps['name']> = {
   index: { ios: 'house.fill', android: 'home' },
@@ -48,6 +87,9 @@ export function FloatingTabBar({ state, descriptors, navigation, insets }: Botto
   const router = useRouter();
   const { capture, dialog } = useCapture();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  // A screen (Library's selection mode) has claimed the bar's slot for
+  // its own toolbar — stand down and let that toolbar be the one visible.
+  const slotClaimed = useContext(TabBarSlotContext).claimed;
 
   // §3.3.3: a floating absolute bar sits on top of the keyboard unless
   // told otherwise — the rename dialog and receipt-field editor both open
@@ -120,13 +162,14 @@ export function FloatingTabBar({ state, descriptors, navigation, insets }: Botto
 
   return (
     <>
-      {/* §3.3.3: hide the pill while the keyboard is up — but ONLY the
+      {/* §3.3.3 + selection mode: hide the pill while the keyboard is up
+          or while a screen's own toolbar holds this slot — but ONLY the
           bar. The scan dialog must stay mounted no matter what: this is
           the dialog the Scan pill's own flow renders into, and unmounting
           a visible-with-text-input dialog on keyboard-show destroys the
           focused field mid-keystroke (the keyboard "flashes open then
           closed" loop, fixed 2026-09-16). */}
-      {!keyboardVisible &&
+      {!keyboardVisible && !slotClaimed &&
         (useGlass ? (
           <GlassView glassEffectStyle="regular" style={[styles.bar, barPosition]}>
             {items}
