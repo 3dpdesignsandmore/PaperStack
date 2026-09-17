@@ -28,7 +28,10 @@ export function ScreenTitle({ eyebrow, title, subtitle, right }: ScreenTitleProp
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="label" style={{ color: theme.accent }}>
+      {/* The eyebrow slot holds the brand wordmark ("PaperStack") —
+          the app name, larger than the old micro-label, on every tab
+          screen (user request, 2026-09-16). */}
+      <ThemedText type="brand" style={{ color: theme.accent }}>
         {eyebrow}
       </ThemedText>
       {/* Title and `right` share a row so an action like Home's gear button

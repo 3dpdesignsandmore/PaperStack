@@ -7,10 +7,10 @@
  * it stays a "Coming soon" row rather than a switch with nothing behind
  * it.
  */
+import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { SymbolView } from 'expo-symbols';
-import Constants from 'expo-constants';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, useColorScheme, View } from 'react-native';
@@ -194,6 +194,10 @@ export default function SettingsScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        {/* The header sits ABOVE the ScrollView directly under the safe
+            area — its wordmark/title left edge matches Home/Library's
+            headers, which also render outside their scroll padding
+            (user request, 2026-09-16). */}
         <ScreenHeader title="Settings" />
         <ScrollView contentContainerStyle={styles.content}>
           <AppCard style={styles.card}>

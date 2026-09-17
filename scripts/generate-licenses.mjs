@@ -10,13 +10,24 @@
  * ships inside the app binary, so its licenses aren't owed to anyone
  * in-app.
  *
+ * Same package at multiple versions dedupes into ONE row: the versions
+ * join into "1.2.3, 1.3.0"; the license text is taken from the copy that
+ * has one (they are licenses — the text does not meaningfully differ
+ * between versions of the same package). This keeps the list a list of
+ * SOFTWARE the app ships rather than a node_modules tree dump.
+ *
+ * license-checker reports the license file path (`licenseFile`) but does
+ * NOT inline its contents — the text is read from disk here (556/577
+ * packages ship one today; the rest get the screen's "see the package
+ * source" fallback).
+ *
  * The walk can't see native libraries bundled inside other packages, so
  * MANUAL_ENTRIES below appends those by hand: today Google ML Kit (pulled
  * in by react-native-document-scanner-plugin on Android) and Apple's
- * Vision framework (iOS, OCR) — both Apache-2.0. They live in the script,
- * not a second file to keep in sync, so every regeneration includes them.
+ * Vision framework (iOS, OCR). They live in the script, not a second file
+ * to keep in sync, so every regeneration includes them.
  */
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +36,14 @@ import licenseChecker from 'license-checker';
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(here, '..');
 const outFile = resolve(projectRoot, 'src/lib/licenses.json');
+
+/**
+ * Cap a single entry's license text — the longest real-world license
+ * files (Apache-2.0 with appendix, GPL family) run ~11k chars; anything
+ * far past that is almost certainly a misdetected file (a CHANGELOG, a
+ * bundled dist), and a scrollable row doesn't want it anyway.
+ */
+const MAX_TEXT_CHARS = 30_000;
 
 /**
  * Native libraries reachable only through other packages — kept by hand
@@ -66,30 +85,76 @@ function init(pkgPath, options) {
   });
 }
 
+/** Read a package's license text from its license file, best-effort.
+ * License files are UTF-8 text; a binary or oversized file means the
+ * path was misdetected — return '' and let the UI show its fallback. */
+async function readLicenseText(licenseFile) {
+  if (licenseFile == null) {
+    return '';
+  }
+  try {
+    const raw = await readFile(licenseFile, 'utf8');
+    return raw.length > MAX_TEXT_CHARS ? '' : raw.trim();
+  } catch {
+    return '';
+  }
+}
+
 const packages = await init(projectRoot, {
   production: true,
-  // The full text is the point of the screen — never truncate.
   markdown: false,
   direct: false,
 });
 
-const entries = Object.entries(packages).map(([key, info]) => {
+/** name → merged entry (same package, possibly several versions). */
+const merged = new Map();
+for (const [key, info] of Object.entries(packages)) {
   // license-checker keys are "name@version"
   const at = key.lastIndexOf('@');
-  return {
-    name: key.slice(0, at),
-    version: key.slice(at + 1),
-    license: Array.isArray(info.licenses) ? info.licenses.join(' OR ') : info.licenses ?? 'UNKNOWN',
-    publisher: info.publisher ?? '',
-    licenseText: info.licenseText ?? '',
-  };
-});
+  const name = key.slice(0, at);
+  const version = key.slice(at + 1);
+  const license = Array.isArray(info.licenses) ? info.licenses.join(' OR ') : info.licenses ?? 'UNKNOWN';
+  const text = await readLicenseText(info.licenseFile);
 
-// Sorted by name (then version, for duplicates) so the JSON and the
-// rendered list are both stable across regenerations.
-entries.sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+  const existing = merged.get(name);
+  if (existing == null) {
+    merged.set(name, {
+      name,
+      versions: [version],
+      license,
+      publisher: info.publisher ?? '',
+      licenseText: text,
+    });
+    continue;
+  }
+  // Same package again at another version: pile the version on, and
+  // take this copy's text if there wasn't one (or this one is longer —
+  // a bigger file usually means a fuller text, never noise; empty never
+  // overwrites a good read).
+  existing.versions.push(version);
+  if (text.length > existing.licenseText.length) {
+    existing.licenseText = text;
+  }
+}
+
+const entries = [...merged.values()].map(({ name, versions, license, publisher, licenseText }) => ({
+  name,
+  version: versions.join(', '),
+  license,
+  publisher,
+  licenseText,
+}));
+
+// Sorted by name so the JSON and the rendered list are both stable across
+// regenerations.
+entries.sort((a, b) => a.name.localeCompare(b.name));
 
 const all = [...entries, ...MANUAL_ENTRIES];
 
 await writeFile(outFile, JSON.stringify(all, null, 2) + '\n', 'utf8');
-console.log(`Wrote ${all.length} license entries (${entries.length} walked, ${MANUAL_ENTRIES.length} manual) to ${outFile}`);
+const withText = all.filter((e) => e.licenseText.length > 0).length;
+console.log(
+  `Wrote ${all.length} license entries ` +
+    `(${entries.length} packages after dedup, ${MANUAL_ENTRIES.length} manual; ` +
+    `${withText} carry full license text) to ${outFile}`,
+);

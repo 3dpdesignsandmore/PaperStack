@@ -34,6 +34,7 @@ run.bat         # expo start --dev-client --port 8082 (daily driver on Windows)
 ## Conventions
 
 - Make **one atomic edit pass per file** — avoid reopening the same file for repeated small edits.
+- **Never start Metro (`run.bat` / `expo start`) yourself — the user owns Metro.** Only they start and restart it; restarting it wrong (or at the wrong moment) kills their connected dev session. Diagnose from outside: `Get-NetTCPConnection -LocalPort 8082 -State Listen` and `Get-Process node`. If a Metro restart is needed, say so and let them run it.
 - Prefer direct edits over CLI text-replacement for small/moderate changes; CLI replacement is fine for large multi-file jobs where manual editing is unwieldy. Don't leave unsaved editor changes and then run a CLI replacement over the same files.
 - Don't run formatter write passes unless explicitly requested or needed to satisfy a check.
 - Delete unused/dead code instead of commenting it out; don't leave commented-out blocks or leftover debug lines.

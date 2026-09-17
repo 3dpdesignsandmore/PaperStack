@@ -11,6 +11,7 @@ export type ThemedTextType =
   | 'smallBold'
   | 'subtitle'
   | 'label'
+  | 'brand'
   | 'link'
   | 'linkPrimary'
   | 'mono';
@@ -34,6 +35,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'smallBold' && styles.smallBold,
         type === 'subtitle' && styles.subtitle,
         type === 'label' && styles.label,
+        type === 'brand' && styles.brand,
         type === 'link' && styles.link,
         type === 'linkPrimary' && [styles.linkPrimary, { color: theme.accent }],
         type === 'mono' && styles.mono,
@@ -83,6 +85,16 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     letterSpacing: 1.54,
     textTransform: 'uppercase',
+  },
+  // The "PaperStack" wordmark — the app's own name, shown on every
+  // page (tab-screen eyebrows + pushed-screen headers). Kept in the
+  // brand's mixed case at a size that reads without competing with the
+  // page title next to it.
+  brand: {
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: 0.2,
   },
   link: {
     fontFamily: Fonts.sans,

@@ -65,7 +65,9 @@ export default function LicensesScreen() {
                     contentContainerStyle={styles.licenseContent}
                     nestedScrollEnabled>
                     <ThemedText type="mono" style={[styles.licenseText, { color: theme.textSecondary }]}>
-                      {item.licenseText === '' ? 'License text unavailable.' : item.licenseText}
+                      {item.licenseText === ''
+                        ? 'This package does not bundle its license text. See the package source for the definitive text.'
+                        : item.licenseText}
                     </ThemedText>
                   </ScrollView>
                 )}

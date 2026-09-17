@@ -200,7 +200,7 @@ export default function LibraryScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScreenTitle
-          eyebrow="Your scans"
+          eyebrow="PaperStack"
           title="Library"
           subtitle={entries != null ? `${entries.length} document${entries.length === 1 ? '' : 's'}` : undefined}
           right={

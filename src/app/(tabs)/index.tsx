@@ -232,7 +232,9 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
   },
   content: {
-    paddingHorizontal: Spacing.three,
+    // NO horizontal padding — `ScreenTitle` carries its own, and both
+    // would compound: Home's header sat 12px right of Library/Settings
+    // (fixed 2026-09-16). Screen row styles below opt back in as needed.
     paddingBottom: BottomTabInset + Spacing.three,
     gap: Spacing.four,
   },
@@ -249,6 +251,7 @@ const styles = StyleSheet.create({
   tileRow: {
     flexDirection: 'row',
     gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
   },
   tile: {
     flex: 1,
@@ -267,6 +270,7 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -289,5 +293,6 @@ const styles = StyleSheet.create({
   },
   statusLine: {
     textAlign: 'center',
+    paddingHorizontal: Spacing.three,
   },
 });

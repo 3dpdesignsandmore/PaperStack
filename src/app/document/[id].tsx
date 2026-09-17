@@ -21,7 +21,7 @@ import { ScreenHeader } from '@/components/screen-header';
 import { SendSheet } from '@/components/send-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { CardShadow, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { appendScanSession, persistOptionsFromSetting, scanRootDir } from '@/lib/db/persist-scan';
@@ -275,7 +275,10 @@ export default function DocumentDetailScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView edges={['top']}>
+      {/* Same centered MaxContentWidth column every other screen uses —
+          without it the header/content span edge-to-edge on wide screens
+          while Home/Library/Settings center in (user request 2026-09-16). */}
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScreenHeader title={document.title} />
       </SafeAreaView>
       {/* Tags row (Phase 2): chips plus add. Hidden while reordering —
@@ -519,11 +522,17 @@ function ActionBarItem({ icon, label, color, onPress, disabled = false }: Action
 }
 
 const styles = StyleSheet.create({
+  // The standard screen scaffold: a centered column capped at
+  // MaxContentWidth, so the header (wordmark + title) sits at the same
+  // left edge as Home/Library/Settings on every screen width.
   container: {
     flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   safeArea: {
     flex: 1,
+    maxWidth: MaxContentWidth,
   },
   center: {
     flex: 1,
