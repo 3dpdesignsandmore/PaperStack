@@ -7,12 +7,13 @@
  * it stays a "Coming soon" row rather than a switch with nothing behind
  * it.
  */
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { SymbolView } from 'expo-symbols';
+import Constants from 'expo-constants';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, useColorScheme, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
@@ -88,16 +89,11 @@ const SECTIONS: SettingsSection[] = [
     title: 'Page size',
     detail: 'US Letter. An A4 option is planned but not built yet.',
   },
-  {
-    label: 'About',
-    title: 'PaperStack',
-    detail:
-      'PaperStack scans and stacks documents onto shared pages. Nothing leaves your device. Version 1.0.0 (development).',
-  },
 ];
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
+  const router = useRouter();
   const theme = useTheme();
   const { paletteId, appearance, setPaletteId, setAppearance } = useThemePreferences();
   const systemScheme = useColorScheme();
@@ -353,6 +349,43 @@ export default function SettingsScreen() {
               </ThemedText>
             </AppCard>
           ))}
+
+          {/* About: version readout + the legal/store-obligation routes.
+              The layout matches every other card's rows so this reads as
+              more settings, not a different kind of screen. */}
+          <AppCard style={styles.card}>
+            <ThemedText type="label" style={[styles.cardLabel, { color: theme.textSecondary }]}>
+              About
+            </ThemedText>
+            <SettingsRow>
+              <View style={styles.rowText}>
+                <ThemedText type="defaultSemiBold">Version</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  {Constants.expoConfig?.version ?? 'Unknown'}
+                </ThemedText>
+              </View>
+            </SettingsRow>
+            <SettingsRow>
+              <LinkRow label="Privacy policy" onPress={() => router.push('/legal/privacy')} />
+            </SettingsRow>
+            <SettingsRow>
+              <LinkRow label="Terms of use" onPress={() => router.push('/legal/terms')} />
+            </SettingsRow>
+            <SettingsRow>
+              <LinkRow label="Open source licenses" onPress={() => router.push('/licenses')} />
+            </SettingsRow>
+            <SettingsRow last>
+              <LinkRow
+                label="Contact"
+                onPress={() =>
+                  Linking.openURL('mailto:[TO FILL]').catch((e: unknown) => {
+                    logThrown('settings-contact', e);
+                    Alert.alert('Could not open email', e instanceof Error ? e.message : String(e));
+                  })
+                }
+              />
+            </SettingsRow>
+          </AppCard>
         </ScrollView>
       </SafeAreaView>
 
@@ -386,6 +419,39 @@ interface SettingsRowProps {
   children: ReactNode;
   /** Suppresses the bottom hairline — never draw one below the last row. */
   last?: boolean;
+}
+
+/** Props for {@link LinkRow}. */
+interface LinkRowProps {
+  /** Row title — the link destination is implied by the parent's press. */
+  label: string;
+  /** Navigate / open whatever the row points at. */
+  onPress: () => void;
+}
+
+/**
+ * A navigation-looking settings row: label + chevron, whole row tappable.
+ * The chevron mirrors `ScreenHeader`'s back affordance (right-pointing
+ * sibling) so "this pushes a screen" is visually consistent app-wide.
+ */
+function LinkRow({ label, onPress }: LinkRowProps) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}>
+      <ThemedText type="defaultSemiBold" style={styles.grow}>
+        {label}
+      </ThemedText>
+      <SymbolView
+        name={{ ios: 'chevron.right', android: 'chevron_right' }}
+        size={16}
+        tintColor={theme.textSecondary}
+      />
+    </Pressable>
+  );
 }
 
 /** One 52px-minimum settings row, hairline-separated except after the last. */
@@ -515,6 +581,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
     paddingVertical: Spacing.two,
+  },
+  linkRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   rowText: {
     flex: 1,

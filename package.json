@@ -37,12 +37,14 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
+    "license-checker": "^25.0.1",
     "typescript": "~6.0.3",
     "vitest": "^5.0.0"
   },
   "scripts": {
     "start": "expo start",
     "test": "vitest run",
+    "licenses": "node ./scripts/generate-licenses.mjs",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
