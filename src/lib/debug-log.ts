@@ -24,10 +24,6 @@ import { Platform } from 'react-native';
 /** Maximum lines retained; oldest dropped first. */
 export const MAX_ENTRIES = 500;
 
-/** The disk mirror's flush debounce (appends on every line would hammer
- * the filesystem for bursts of log calls). */
-const FLUSH_DELAY_MS = 1500;
-
 /** True once the disk mirror has been merged into the buffer. */
 let loadedFromDisk = false;
 /** Resolves when the in-flight (or settled) disk restore completes —
@@ -36,8 +32,10 @@ let restorePromise: Promise<void> | null = null;
 /** Bumped by `clear()`: a restore that started before a Clear merges
  * nothing (the Clear must win, not the stale read). */
 let restoreGeneration = 0;
-/** Pending flush timer, if any. */
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
+/** True once the disk restore has settled (resolved or failed). Until it
+ * has, a synchronous write would clobber the mirror with a pre-merge
+ * buffer, so the write defers to `logReady()` instead. */
+let restoreSettled = false;
 
 /** The on-disk mirror: one JSON `LogEntry` per line under
  * documents/debug/log.jsonl. Survives process death — the in-memory
@@ -62,6 +60,7 @@ function ensureLoadedFromDisk(): void {
   const file = logFile();
   if (!file.exists) {
     restorePromise = Promise.resolve();
+    restoreSettled = true;
     return;
   }
   restorePromise = file
@@ -83,6 +82,9 @@ function ensureLoadedFromDisk(): void {
     })
     .catch(() => {
       // Unreadable file — start empty rather than take logging down.
+    })
+    .finally(() => {
+      restoreSettled = true;
     });
 }
 
@@ -119,32 +121,46 @@ function isLogEntry(value: unknown): value is LogEntry {
   );
 }
 
-/** Write the buffer to the disk mirror, debounced (see FLUSH_DELAY_MS). */
-function scheduleFlush(): void {
-  if (flushTimer != null) {
+/** Write the whole buffer to the disk mirror. Skips an empty buffer so a
+ * `clear()` is not resurrected by a later write. */
+function writeMirror(): void {
+  if (buffer.length === 0) {
     return;
   }
-  flushTimer = setTimeout(() => {
-    flushTimer = null;
-    // Wait for the restore so the write cannot clobber the mirror with
-    // a pre-merge buffer, and skip entirely for an empty one — a clear
-    // must not resurrect the file on the next debounced flush.
-    void logReady().then(() => {
-      if (buffer.length === 0) {
-        return;
-      }
-      try {
-        const dir = new Directory(Paths.document, 'debug');
-        if (!dir.exists) {
-          dir.create({ intermediates: true, idempotent: true });
-        }
-        logFile().write(buffer.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
-      } catch {
-        // A failed mirror write must never take the app down — logging is
-        // diagnostic, not critical.
-      }
-    });
-  }, FLUSH_DELAY_MS);
+  try {
+    const dir = new Directory(Paths.document, 'debug');
+    if (!dir.exists) {
+      dir.create({ intermediates: true, idempotent: true });
+    }
+    logFile().write(buffer.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
+  } catch {
+    // A failed mirror write must never take the app down — logging is
+    // diagnostic, not critical.
+  }
+}
+
+/**
+ * Mirror the buffer to disk, write-through.
+ *
+ * This was a 1500ms debounced timer until 2026-09-17. A debounce loses
+ * every entry written inside the window whenever the JS context is torn
+ * down — pending timers die with it — which is precisely the moment a
+ * diagnostic log exists to capture. During the OCR investigation each
+ * repro came back missing its final lines, so the log could never name
+ * the step that preceded a reload.
+ *
+ * `File.write` is synchronous and the payload is a few hundred bytes for
+ * a typical session, so the cost of writing per entry is not worth the
+ * blind spot. Before the restore settles (the first few ms of a launch)
+ * the write defers to `logReady()`, so it cannot clobber the mirror with
+ * a pre-merge buffer.
+ */
+function flush(): void {
+  if (restoreSettled) {
+    writeMirror();
+    return;
+  }
+  void logReady().then(writeMirror);
 }
 
 /** Severity of one log line. */
@@ -171,7 +187,7 @@ export function log(level: LogLevel, area: string, message: string): void {
   if (buffer.length > MAX_ENTRIES) {
     buffer.splice(0, buffer.length - MAX_ENTRIES);
   }
-  scheduleFlush();
+  flush();
 }
 
 /** Convenience wrappers. */
@@ -211,6 +227,7 @@ export function clear(): void {
   restoreGeneration++;
   buffer.length = 0;
   loadedFromDisk = true;
+  restoreSettled = true;
   try {
     const file = logFile();
     if (file.exists) {

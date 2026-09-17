@@ -1,4 +1,136 @@
-# OCR issue — investigation & decision log (2026-09-17)
+# OCR issue — investigation & decision log
+
+**Status: root cause found (2026-09-17). OCR had never executed.**
+
+The cause was a pre-flight availability gate in `recognizePage` that could
+never pass. Everything in this file below "Resolution" is kept as the
+record of how the wrong answer was reached, because the reasoning failed
+in an instructive way: the instrument was lying, and every inference drawn
+from its silence inherited the lie.
+
+---
+
+## Resolution
+
+`recognize.ts` called expo's `requireOptionalNativeModule('NitroOcr')`
+before importing the engine, and threw
+`OCR needs a newer app build (engine module unavailable).` when it
+returned null.
+
+**It always returned null.** That call queries *Expo's* native module
+registry. `react-native-nitro-ocr` is not an Expo module:
+
+| check | result |
+| --- | --- |
+| `expo-module.config.json` | does not exist |
+| `ModuleDefinition` / `ExpoModulesCore` in `android/`, `ios/` | zero matches |
+| `nitro.json` | `"autolinking": { "NitroOcr": { "swift": "NitroOcr", "kotlin": "NitroOcr" } }` |
+
+It registers as a **Nitro HybridObject**, in Nitro's own registry. Expo's
+lookup could not match it on any binary, engine present or absent. So
+execution never reached the engine import, `react-native-nitro-ocr` was
+never loaded, and `recognize()` was never called — on any build, ever.
+
+The gate was also redundant. `react-native-nitro-modules` performs the
+equivalent check itself at module scope
+(`TurboModuleRegistry.getEnforcing('NitroModules')`, a miss wrapped in
+`ModuleNotFoundError`), so a stale binary throws a catchable JS error on
+import — exactly the graceful outcome the gate was written to produce.
+
+**Fix applied:** gate deleted; the import throws and is caught;
+`isStaleBinaryError()` preserves the "needs a newer app build" message for
+a genuine stale-binary miss. Do not reintroduce a gate keyed on an
+Expo-registry lookup.
+
+### The log that showed it
+
+```text
+544463  2/6 downscale returned; checking native gate
+544467  2a await import('expo') — lazy chunk fetch
+545017  2b import('expo') resolved
+545022  [error] OCR needs a newer app build (engine module unavailable).
+548509  [app] started
+```
+
+### Why it took so long to see
+
+`debug-log.ts` mirrored to disk on a **1500 ms debounced `setTimeout`**. A
+JS context teardown destroys pending timers, so entries written in the
+final 1.5 s never reached disk. Every "no error line exists, therefore no
+error occurred" inference in this file was drawn from a log structurally
+incapable of recording one. Fixed the same day: the mirror is now
+write-through.
+
+**Lesson: before reasoning from an absence in a log, establish that the
+log could have recorded the thing.**
+
+---
+
+## Claims in this file that the evidence disproved
+
+1. **"The failure is a native crash inside the engine."** The engine was
+   never imported and `recognize()` was never invoked. The crash was
+   attributed to code that had not executed an instruction.
+2. **"The engine IS in the installed build — the availability gate
+   passed."** The gate failed, every time. This was inferred from a
+   missing error line.
+3. **"The process restarted."** It did not. PID 20559 logged continuously
+   across 09:40:39–09:40:45 and was killed at **10:50:50** by
+   `remove task` (a Recents swipe), an hour later. The only two kills of
+   the app in a 236k-line logcat dump are `remove task` at adj 900/905;
+   no lmkd entry for the app exists, though the buffer carries 252
+   lmkd/kill lines for other processes. At 11:31/11:32 two
+   `Running "main"` lines appear under one PID (6842) — a JS context
+   reload inside a live process.
+4. **Remediation: swap to `@react-native-ml-kit/text-recognition`.** It
+   would have changed nothing. The comparison of engines, the split-engine
+   analysis, and the iOS sequencing question in the sections below are all
+   downstream of a diagnosis that was wrong. Revisit only if the engine
+   fails once it has actually run.
+
+---
+
+## Still open: the JS context reload
+
+Separate defect, unresolved. Not caused by OCR.
+
+**Established:**
+
+- It follows a scanner session (ML Kit `GmsDocumentScanningDelegateActivity`).
+- It is a JS context reload, not a process death (same PID, two `Running "main"`).
+- **With Wi-Fi off it does not happen.** Same device, same scan, same dev
+  memory footprint, same image decode — the scan persisted, OCR ran to its
+  breadcrumb, the error was caught and logged, and the app stayed alive.
+- In the run that exposed the gate, the restart came **3.5 s after** OCR
+  had already failed and been handled — no engine import, no ML Kit model
+  load, no OCR bitmap.
+- One captured symptom: `Cannot connect to Expo CLI. URL: 172.21.0.2:8082`
+  (a correct LAN address), 12 s before a reload.
+
+**Ruled out:** low-memory kill. The device does run heavy in dev
+(~450 MB PSS, peaks toward 760 MB, Samsung `am_nandswap` paging on a
+Z Flip 5) and that is worth reducing on its own merits — but lmkd kills
+processes, it cannot restart JS inside a surviving one, and the Wi-Fi-off
+control removes the reload without changing memory pressure at all.
+
+**Mechanism: unknown.** Do not adopt one without evidence.
+
+## Next
+
+1. `eas build --profile preview --platform android` — no Metro, no dev
+   client, no lazy chunks. The engine gets its first real execution there.
+2. Verify the engine's bounding boxes are 0..1 and not pixels (ML Kit's
+   Android APIs report pixels; `recognize.ts`'s header assumes normalized).
+   The invisible PDF text layer is misplaced if this is wrong.
+3. Remove the `ocr-step` breadcrumbs once OCR is verified end to end
+   against a real exported PDF.
+4. Investigate the reload as its own problem.
+
+---
+
+# Historical record (superseded — see "Resolution" above)
+
+## (original 2026-09-17 draft)
 
 Starting point: the exported diagnostic log from the device, pasted below.
 Everything in this file is the discussion that followed it.

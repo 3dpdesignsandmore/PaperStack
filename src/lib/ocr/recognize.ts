@@ -4,36 +4,42 @@
  * unit-testable heuristics live above this.
  *
  * Engine: `react-native-nitro-ocr` — Apple Vision on iOS, Google ML Kit
- * on Android; both already normalize to 0..1 top-left coordinates, so
- * this adapter only maps the engine's block shape onto ours.
- *
- * Like `scanner.ts`/`recipients.ts` before it, the engine loads through
- * a dynamic import with a native-availability gate: `react-native-nitro-ocr`
- * was added 2026-09-16 and installed dev builds predate it — a static
- * import would redbox the whole app on those binaries (module-scope
- * `requireNativeModule`, the `expo-mail-composer` lesson; see
+ * on Android. The engine loads through a dynamic import so a binary
+ * predating it fails here, gracefully, rather than redboxing the whole
+ * app at module scope (the `expo-mail-composer` lesson; see
  * `recipients.ts`'s header for the full story).
  *
  * ---------------------------------------------------------------------
- * CRASH INSTRUMENTATION (2026-09-17, temporary)
+ * WHY THERE IS NO PRE-FLIGHT AVAILABILITY GATE (2026-09-17)
  *
- * The device log ends at `ocr-recognize: page …: start` — logged by the
- * pipeline BEFORE this function is entered — and the process restarts
- * ~4.85 s later with no further JS output. A native crash cannot be
- * caught by JS, so the only way to locate it is to leave a breadcrumb on
- * each side of every native call in here. There are THREE, not one:
+ * This function used to call expo's `requireOptionalNativeModule
+ * ('NitroOcr')` before importing the engine, throwing "needs a newer app
+ * build" when it returned null.
  *
- *   1. `downscaleForOcr` — ImageManipulator decode/resize (native)
- *   2. `await import('react-native-nitro-ocr')` — initializes the Nitro
- *      C++ runtime; a nitro-modules build targeting RN 0.83 could abort
- *      here, before `recognize` is ever called
- *   3. `candidate.recognize(uri)` — the engine call itself
+ * It ALWAYS returned null. That call queries EXPO's native module
+ * registry, and `react-native-nitro-ocr` is not an Expo module: no
+ * `expo-module.config.json`, no `ModuleDefinition` in its android/ or
+ * ios/ sources, and registration as a Nitro HybridObject via
+ * `nitro.json` autolinking. The lookup could not match it on ANY binary,
+ * engine present or absent — so execution never reached the import below
+ * and the engine was never called once, on any build. The device log
+ * that exposed this ended:
  *
- * The last breadcrumb written before the restart names the culprit.
- * Dimensions and byte size are logged too: an OOM kill and a SIGSEGV look
- * identical from JS, and the numbers separate them.
+ *     2b import('expo') resolved
+ *     [error] OCR needs a newer app build (engine module unavailable).
  *
- * Remove this instrumentation once the fault is located.
+ * The gate was redundant as well as wrong. `react-native-nitro-modules`
+ * runs the equivalent check itself at module scope —
+ * `TurboModuleRegistry.getEnforcing('NitroModules')`, a miss wrapped in
+ * `ModuleNotFoundError` — so a stale binary throws a catchable JS error
+ * on import, which is exactly the graceful outcome the gate existed to
+ * produce. `isStaleBinaryError` below preserves the distinction its
+ * message carried.
+ *
+ * Do not reintroduce a gate keyed on an Expo-registry lookup.
+ *
+ * The `ocr-step` breadcrumbs are temporary; remove them once OCR is
+ * verified end to end against a real exported PDF.
  * ---------------------------------------------------------------------
  */
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -70,25 +76,24 @@ interface EngineModule {
  * pipeline) logs and moves on.
  */
 export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
-  logInfo('ocr-step', '1/6 entered recognizePage; downscaling');
+  logInfo('ocr-step', '1/5 entered recognizePage; downscaling');
   const uri = await downscaleForOcr(imageUri);
-  logInfo('ocr-step', '2/6 downscale returned; checking native gate');
 
-  // The native-availability gate — see the header. `requireOptionalNativeModule`
-  // returns null (never throws) on binaries predating the engine.
-  const { requireOptionalNativeModule } = await import('expo');
-  if (requireOptionalNativeModule('NitroOcr') == null) {
-    throw new Error('OCR needs a newer app build (engine module unavailable).');
+  // In dev, Metro serves the bundle with `lazy=true`, so this import is an
+  // HTTP fetch from the dev server rather than a local require; a
+  // production bundle inlines it. Either way a failure here is reported,
+  // not silent — see the header on why no gate precedes it.
+  logInfo('ocr-step', "2/5 await import('react-native-nitro-ocr')");
+  let loaded: unknown;
+  try {
+    loaded = await import('react-native-nitro-ocr');
+  } catch (e: unknown) {
+    if (isStaleBinaryError(e)) {
+      throw new Error('OCR needs a newer app build (engine module unavailable).');
+    }
+    throw e;
   }
-  // The gate passed — the module IS in this binary. A failure past this
-  // point is an engine error, not a stale build (the pipeline logs it).
-  logInfo('ocr-step', '3/6 gate passed; importing engine (Nitro C++ init)');
-
-  // Metro CJS interop: the package resolves as either the module namespace
-  // itself or a `{ default: namespace }` wrapper (same dance as
-  // `recipients.ts` with mail-composer).
-  const loaded: unknown = await import('react-native-nitro-ocr');
-  logInfo('ocr-step', '4/6 engine module imported; resolving export');
+  logInfo('ocr-step', '3/5 engine module imported; resolving export');
   const candidate =
     typeof (loaded as Partial<EngineModule>).recognize === 'function'
       ? (loaded as EngineModule)
@@ -100,11 +105,11 @@ export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
     throw new Error('OCR engine failed to load.');
   }
 
-  logInfo('ocr-step', '5/6 calling engine recognize()');
+  logInfo('ocr-step', '4/5 calling engine recognize()');
   const result = await candidate.recognize(uri);
   logInfo(
     'ocr-step',
-    `6/6 recognize() returned: ${result.blocks?.length ?? 0} block(s), ${result.text?.length ?? 0} char(s)`,
+    `5/5 recognize() returned: ${result.blocks?.length ?? 0} block(s), ${result.text?.length ?? 0} char(s)`,
   );
   // First block's raw box, unmapped — the header claims the engine
   // normalizes to 0..1, but ML Kit's Android APIs report PIXELS. If these
@@ -127,6 +132,23 @@ export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
     confidence: block.confidence,
   }));
   return { fullText: result.text, blocks };
+}
+
+/**
+ * True when a thrown value means the native side is missing from this
+ * binary rather than the engine failing at its work. Nitro surfaces both
+ * shapes: its own `ModuleNotFoundError`, and the underlying
+ * `TurboModuleRegistry.getEnforcing` invariant text.
+ */
+function isStaleBinaryError(e: unknown): boolean {
+  if (!(e instanceof Error)) {
+    return false;
+  }
+  return (
+    e.name === 'ModuleNotFoundError' ||
+    e.message.includes('TurboModuleRegistry') ||
+    e.message.includes('could not be found')
+  );
 }
 
 /**
