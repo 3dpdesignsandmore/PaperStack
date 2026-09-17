@@ -9,13 +9,18 @@ import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useEffect } from 'react';
 
 import { StaleBuildGuard } from '@/components/stale-build-guard';
 import { ThemeProvider } from '@/hooks/theme-provider';
 import { DATABASE_NAME, migrate } from '@/lib/db/migrations';
-import { logInfo } from '@/lib/debug-log';
+import { getSettingSync } from '@/lib/db/queries';
+import {
+    armDetailFromStored,
+    DEBUG_LOG_UNTIL_KEY,
+    logInfo,
+} from '@/lib/debug-log';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -69,6 +74,11 @@ export default function RootLayout() {
 
   return (
     <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrate}>
+      {/* Hydrates the detailed-logging deadline from the settings row so
+          the 30-minute window survives reloads/restarts unchanged — the
+          same wall-clock deadline, never a fresh one. Inside the provider
+          so the database exists. */}
+      <DetailDeadlineHydrator />
       <ThemeProvider>
         <StaleBuildGuard>
           <Stack screenOptions={{ headerShown: false }} />
@@ -76,4 +86,24 @@ export default function RootLayout() {
       </ThemeProvider>
     </SQLiteProvider>
   );
+}
+
+/**
+ * Reads the persisted `debug_log_until` deadline once per mount and
+ * arms the detail window (or disarms it, when absent/expired — which is
+ * also how the log line "detailed logging expired" gets its truth).
+ * Renders nothing; must sit inside `SQLiteProvider`.
+ */
+function DetailDeadlineHydrator() {
+  const db = useSQLiteContext();
+
+  useEffect(() => {
+    const stored = getSettingSync(db, DEBUG_LOG_UNTIL_KEY);
+    const armed = armDetailFromStored(stored == null ? null : Number(stored));
+    if (stored != null && !armed) {
+      logInfo('debug', 'detailed logging expired');
+    }
+  }, [db]);
+
+  return null;
 }

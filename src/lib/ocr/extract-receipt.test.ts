@@ -6,8 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { extractReceipt, toReceiptData } from './extract-receipt';
 import type { OcrBlock, OcrResult } from '@/lib/model';
+import { extractReceipt, toReceiptData } from './extract-receipt';
 
 /** Build a block positioned by row (1 = top of page), sized by height. */
 function block(text: string, row: number, height = 0.02): OcrBlock {

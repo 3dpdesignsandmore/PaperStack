@@ -15,8 +15,8 @@ import { Alert } from 'react-native';
 
 import { appendScanSession, type PersistOptions, persistOptionsFromSetting, persistScanSession } from '@/lib/db/persist-scan';
 import { fetchLibrary, getSetting, SCAN_NAME_PREFIX_KEY, SCAN_QUALITY_KEY } from '@/lib/db/queries';
-import { scheduleOcr } from '@/lib/ocr/pipeline';
 import { DocumentKind, type LibraryEntry } from '@/lib/model';
+import { scheduleOcr } from '@/lib/ocr/pipeline';
 
 /** State + handlers for the save-flow dialog a caller renders. */
 export interface CaptureDialogState {

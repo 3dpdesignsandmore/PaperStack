@@ -18,7 +18,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { logInfo } from '@/lib/debug-log';
+import { logDetail, logInfo } from '@/lib/debug-log';
 import type { DocumentKind, ScanDocument } from '@/lib/model';
 
 /** Long-edge pixel cap for stored scans (plan §9 storage budget). */
@@ -134,9 +134,14 @@ export async function persistScanSession(
   try {
     const pages: PersistedPage[] = [];
     for (let index = 0; index < pageUris.length; index++) {
+      const pageStartedAt = Date.now();
       const prepared = await preparePage(
         pageUris[index],
         options.qualityPercent ?? DEFAULT_QUALITY_PERCENT,
+      );
+      logDetail(
+        'persist-page',
+        `page ${index}: prepared ${prepared.widthPx}x${prepared.heightPx} in ${Date.now() - pageStartedAt} ms`,
       );
       const dest = new File(docDir, `page-${index}.jpg`);
       new File(prepared.uri).move(dest);

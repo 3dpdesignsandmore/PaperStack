@@ -106,15 +106,21 @@ export default function LogViewerScreen() {
             keyExtractor={(item) => String(item.at)}
             contentContainerStyle={styles.listContent}
             renderItem={({ item }) => (
-              <View style={styles.row}>
+              <View
+                style={[
+                  styles.row,
+                  item.level === 'detail' && { opacity: 0.75, paddingVertical: 1 },
+                ]}>
                 <ThemedText type="mono" style={[styles.meta, { color: theme.textSecondary }]}>
-                  {`${formatTime(item.at)}  ${item.area}`}
+                  {`${formatTime(item.at)}${item.level === 'detail' ? ' ·' : ''}  ${item.area}`}
                 </ThemedText>
                 <ThemedText
                   type="mono"
                   style={[
                     styles.message,
-                    item.level === 'error' ? { color: theme.danger } : { color: theme.text },
+                    item.level === 'error'
+                      ? { color: theme.danger }
+                      : { color: theme.text },
                   ]}>
                   {item.message}
                 </ThemedText>

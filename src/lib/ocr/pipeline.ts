@@ -19,7 +19,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { OCR_ENABLED_KEY, saveOcrResult, saveReceiptData } from '@/lib/db/ocr-queries';
 import { getSetting, SCAN_QUALITY_KEY } from '@/lib/db/queries';
-import { logInfo, logThrown } from '@/lib/debug-log';
+import { logDetail, logInfo, logThrown } from '@/lib/debug-log';
 import type { OcrResult, ScanPage } from '@/lib/model';
 import { extractReceipt, toReceiptData } from '@/lib/ocr/extract-receipt';
 import { recognizePage } from '@/lib/ocr/recognize';
@@ -79,6 +79,7 @@ export async function runOcrForDocument(db: SQLiteDatabase, documentId: string):
  * receipt fields). Never throws — logging and moving on is the contract.
  */
 export async function runOcrForPage(db: SQLiteDatabase, page: PipelinePage): Promise<void> {
+  const startedAt = Date.now();
   logInfo('ocr-recognize', `page ${page.id}: start`);
   let recognized: Awaited<ReturnType<typeof recognizePage>>;
   try {
@@ -104,6 +105,7 @@ export async function runOcrForPage(db: SQLiteDatabase, page: PipelinePage): Pro
       'ocr-pipeline',
       `page ${page.id}: ${recognized.blocks.length} block(s), total ${receipt.total ?? '—'}`,
     );
+    logDetail('ocr-pipeline', `page ${page.id}: done in ${Date.now() - startedAt} ms`);
   } catch (e: unknown) {
     logThrown('ocr-persist', e);
   }

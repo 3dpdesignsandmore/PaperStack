@@ -113,7 +113,24 @@ Z Flip 5) and that is worth reducing on its own merits — but lmkd kills
 processes, it cannot restart JS inside a surviving one, and the Wi-Fi-off
 control removes the reload without changing memory pressure at all.
 
+**Process death ruled out (2026-09-17, decisive).** `adb shell pidof
+com.tdpdesignsandmore.paperstack` returned **4610 before the scan and 4610
+after the restart**, and `adb logcat -b crash -d` holds nothing for 09-17
+at all (its oldest entries are from 09-15, so it is not rotating). Nothing
+has crashed at any point in this investigation — every "crash" was this
+reload.
+
 **Mechanism: unknown.** Do not adopt one without evidence.
+
+### What this now blocks
+
+With the gate removed, OCR reaches the engine: the lazy chunk fetched in
+968 ms, the export resolved, and `recognize()` was called. The context was
+torn down 4.0 s later, before it returned — a duration well within a
+first-run ML Kit model load, so the engine may simply have been working.
+The reload is now the only thing standing between this app and a verified
+OCR result. Fix it, or sidestep it with a `preview` build, before drawing
+any conclusion about the engine.
 
 ## Next
 

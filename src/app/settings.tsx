@@ -45,7 +45,15 @@ import {
     SCAN_QUALITY_KEY,
     setSetting,
 } from '@/lib/db/queries';
-import { exportAndShareLog, logInfo, logThrown } from '@/lib/debug-log';
+import {
+    DEBUG_LOG_UNTIL_KEY,
+    DETAIL_WINDOW_MS,
+    detailLoggingActive,
+    detailLoggingSetStatus,
+    exportAndShareLog,
+    logInfo,
+    logThrown,
+} from '@/lib/debug-log';
 import { FILENAME_TEMPLATE_KEY } from '@/lib/pdf/filename';
 
 /** Quality presets exposed in Settings, mapped to `croppedImageQuality`. */
@@ -111,6 +119,10 @@ export default function SettingsScreen() {
   // OCR is on by default (matching the pipeline's absent-key default) —
   // the switch stops the automatic pass on new scans.
   const [ocrEnabled, setOcrEnabled] = useState(true);
+  // Detailed logging: deadline-backed state — true only while the wall
+  // clock is inside the 30-minute window (recomputed on focus so an
+  // expired window shows the switch as off, honestly).
+  const [detailLogging, setDetailLogging] = useState(false);
   // Filename template (Phase 7): null while loading, '' meaning
   // "unset" (the placeholder shows the default).
   const [template, setTemplate] = useState<string | null>(null);
@@ -135,6 +147,7 @@ export default function SettingsScreen() {
         setQuality(storedQuality == null ? DEFAULT_QUALITY : Number(storedQuality));
         setTemplate(storedTemplate);
         setOcrEnabled(storedOcr !== 'false');
+        setDetailLogging(detailLoggingActive());
       })().catch((e: unknown) => logThrown('settings-load', e));
     }, [db]),
   );
@@ -153,6 +166,16 @@ export default function SettingsScreen() {
   async function toggleOcr(value: boolean) {
     setOcrEnabled(value);
     await setSetting(db, OCR_ENABLED_KEY, value ? 'true' : 'false');
+  }
+
+  /* Detailed logging: on sets a wall-clock deadline 30 minutes out
+     and persists it; off clears it. The switch shows `off` on next
+     focus after expiry (load() re-reads via detailLoggingActive). */
+  async function toggleDetailLogging(value: boolean) {
+    setDetailLogging(value);
+    detailLoggingSetStatus(value);
+    const until = value ? Date.now() + DETAIL_WINDOW_MS : 0;
+    await setSetting(db, DEBUG_LOG_UNTIL_KEY, String(until));
   }
 
   async function chooseQuality(value: number) {
@@ -295,6 +318,16 @@ export default function SettingsScreen() {
                 </ThemedText>
               </View>
               <Switch value={ocrEnabled} onValueChange={toggleOcr} />
+            </SettingsRow>
+
+            <SettingsRow last>
+              <View style={styles.rowText}>
+                <ThemedText type="defaultSemiBold">Detailed logging</ThemedText>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Verbose diagnostics for troubleshooting. Turns itself off after 30 minutes; log files rotate at 1 MB.
+                </ThemedText>
+              </View>
+              <Switch value={detailLogging} onValueChange={toggleDetailLogging} />
             </SettingsRow>
           </AppCard>
 

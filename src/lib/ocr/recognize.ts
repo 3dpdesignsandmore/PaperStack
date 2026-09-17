@@ -44,7 +44,7 @@
  */
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { logInfo } from '@/lib/debug-log';
+import { logDetail } from '@/lib/debug-log';
 import type { OcrBlock } from '@/lib/model';
 
 /** Long-edge cap for the image handed to the engine (mirrors the stored
@@ -76,14 +76,15 @@ interface EngineModule {
  * pipeline) logs and moves on.
  */
 export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
-  logInfo('ocr-step', '1/5 entered recognizePage; downscaling');
+  const startedAt = Date.now();
+  logDetail('ocr-step', '1/5 entered recognizePage; downscaling');
   const uri = await downscaleForOcr(imageUri);
 
   // In dev, Metro serves the bundle with `lazy=true`, so this import is an
   // HTTP fetch from the dev server rather than a local require; a
   // production bundle inlines it. Either way a failure here is reported,
   // not silent — see the header on why no gate precedes it.
-  logInfo('ocr-step', "2/5 await import('react-native-nitro-ocr')");
+  logDetail('ocr-step', "2/5 await import('react-native-nitro-ocr')");
   let loaded: unknown;
   try {
     loaded = await import('react-native-nitro-ocr');
@@ -93,7 +94,7 @@ export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
     }
     throw e;
   }
-  logInfo('ocr-step', '3/5 engine module imported; resolving export');
+  logDetail('ocr-step', '3/5 engine module imported; resolving export');
   const candidate =
     typeof (loaded as Partial<EngineModule>).recognize === 'function'
       ? (loaded as EngineModule)
@@ -105,11 +106,11 @@ export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
     throw new Error('OCR engine failed to load.');
   }
 
-  logInfo('ocr-step', '4/5 calling engine recognize()');
+  logDetail('ocr-step', '4/5 calling engine recognize()');
   const result = await candidate.recognize(uri);
-  logInfo(
+  logDetail(
     'ocr-step',
-    `5/5 recognize() returned: ${result.blocks?.length ?? 0} block(s), ${result.text?.length ?? 0} char(s)`,
+    `5/5 recognize() returned: ${result.blocks?.length ?? 0} block(s), ${result.text?.length ?? 0} char(s) in ${Date.now() - startedAt} ms`,
   );
   // First block's raw box, unmapped — the header claims the engine
   // normalizes to 0..1, but ML Kit's Android APIs report PIXELS. If these
@@ -117,7 +118,7 @@ export async function recognizePage(imageUri: string): Promise<RecognizedPage> {
   // and the invisible PDF text layer is misplaced.
   const first = result.blocks?.[0]?.boundingBox;
   if (first != null) {
-    logInfo(
+    logDetail(
       'ocr-step',
       `raw box[0]: x=${first.x} y=${first.y} w=${first.width} h=${first.height} (>1 means pixels, not 0..1)`,
     );
@@ -158,13 +159,13 @@ function isStaleBinaryError(e: unknown): boolean {
  * URI of the downscaled copy.
  */
 async function downscaleForOcr(sourceUri: string): Promise<string> {
-  logInfo('ocr-step', '1a decoding source to read dimensions');
+  logDetail('ocr-step', '1a decoding source to read dimensions');
   const context = ImageManipulator.manipulate(sourceUri);
   const source = await context.renderAsync();
   const longEdge = Math.max(source.width, source.height);
-  logInfo('ocr-step', `1b decoded: ${source.width}x${source.height} (long edge ${longEdge})`);
+  logDetail('ocr-step', `1b decoded: ${source.width}x${source.height} (long edge ${longEdge})`);
   if (longEdge <= OCR_MAX_LONG_EDGE_PX) {
-    logInfo('ocr-step', '1c within cap; passing original uri to engine');
+    logDetail('ocr-step', '1c within cap; passing original uri to engine');
     return sourceUri;
   }
   const scale = OCR_MAX_LONG_EDGE_PX / longEdge;
@@ -173,11 +174,11 @@ async function downscaleForOcr(sourceUri: string): Promise<string> {
     width: Math.round(source.width * scale),
     height: Math.round(source.height * scale),
   });
-  logInfo('ocr-step', '1c over cap; rendering resized copy');
+  logDetail('ocr-step', '1c over cap; rendering resized copy');
   const image = await context.renderAsync();
   // Re-encode at a mid quality — it's transient input to the engine, not
   // a stored artifact.
   const saved = await image.saveAsync({ compress: 0.85, format: SaveFormat.JPEG });
-  logInfo('ocr-step', '1d resized copy saved');
+  logDetail('ocr-step', '1d resized copy saved');
   return saved.uri;
 }
