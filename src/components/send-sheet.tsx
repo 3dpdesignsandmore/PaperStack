@@ -60,6 +60,19 @@ type SaveMode =
   | { kind: 'idle' }
   | { kind: 'picking-channel'; label: string; value: string; channel: RecipientChannel };
 
+/**
+ * A finished handoff (email composer or messaging app opened) — the
+ * sheet switches to this confirmation state instead of closing, so the
+ * user gets an explicit "we handed it off" signal. `channel` names the
+ * app to finish sending in; `cancelled` distinguishes the backed-out
+ * email composer path, which re-opens the form for a retry rather than
+ * pretending the send happened.
+ */
+interface HandoffState {
+  channel: RecipientChannel;
+  cancelled: boolean;
+}
+
 /** The recipient chosen from the picker, if any — their values seed the
  * send form's fields. */
 export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: SendSheetProps) {
