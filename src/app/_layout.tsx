@@ -5,8 +5,8 @@ import {
     SchibstedGrotesk_600SemiBold,
     SchibstedGrotesk_700Bold,
 } from '@expo-google-fonts/schibsted-grotesk';
-import { useFonts } from 'expo-font';
 import Constants from 'expo-constants';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
@@ -14,8 +14,8 @@ import { useEffect } from 'react';
 
 import { StaleBuildGuard } from '@/components/stale-build-guard';
 import { ThemeProvider } from '@/hooks/theme-provider';
-import { logInfo } from '@/lib/debug-log';
 import { DATABASE_NAME, migrate } from '@/lib/db/migrations';
+import { logInfo } from '@/lib/debug-log';
 
 SplashScreen.preventAutoHideAsync();
 

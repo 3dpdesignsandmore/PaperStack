@@ -17,12 +17,12 @@
  */
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { getSetting, SCAN_QUALITY_KEY } from '@/lib/db/queries';
 import { OCR_ENABLED_KEY, saveOcrResult, saveReceiptData } from '@/lib/db/ocr-queries';
+import { getSetting, SCAN_QUALITY_KEY } from '@/lib/db/queries';
 import { logInfo, logThrown } from '@/lib/debug-log';
+import type { OcrResult, ScanPage } from '@/lib/model';
 import { extractReceipt, toReceiptData } from '@/lib/ocr/extract-receipt';
 import { recognizePage } from '@/lib/ocr/recognize';
-import type { OcrResult, ScanPage } from '@/lib/model';
 
 /** A persisted page the pipeline can work on. */
 interface PipelinePage {
@@ -121,3 +121,4 @@ export function scheduleOcr(db: SQLiteDatabase, documentId: string): void {
 /** Re-exported so the settings screen can offer a re-run affordance
  * against the same total key the pipeline uses. */
 export { SCAN_QUALITY_KEY as OCR_SCAN_QUALITY_KEY };
+

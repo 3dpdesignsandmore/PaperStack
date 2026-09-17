@@ -16,6 +16,7 @@
  * centered (or packed into N-up rects). This module takes the mapped
  * rect + font + text and writes the operators.
  */
+import type { PDFFont, PDFHexString } from 'pdf-lib';
 import {
     beginText,
     endText,
@@ -27,7 +28,6 @@ import {
     showText,
     TextRenderingMode,
 } from 'pdf-lib';
-import type { PDFFont, PDFHexString } from 'pdf-lib';
 
 /** Font size floor — tiny PDF text can trip strict readers. */
 const MIN_FONT_SIZE = 4;

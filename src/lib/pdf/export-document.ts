@@ -15,11 +15,11 @@ import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
-import { getSetting } from '@/lib/db/queries';
 import { fetchOcrResult } from '@/lib/db/ocr-queries';
+import { getSetting } from '@/lib/db/queries';
 import type { OcrBlock, ScanDocument, ScanPage } from '@/lib/model';
-import { drawInvisibleText } from '@/lib/pdf/invisible-text';
 import { FILENAME_TEMPLATE_KEY, resolveExportFilename } from '@/lib/pdf/filename';
+import { drawInvisibleText } from '@/lib/pdf/invisible-text';
 
 /** US Letter, in points (plan §5). */
 const PAGE_PTS = { width: 612, height: 792 };

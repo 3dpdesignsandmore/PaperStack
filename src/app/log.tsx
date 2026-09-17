@@ -8,10 +8,10 @@
  * Newest at the top: for "what just happened?" you read down from the
  * top, matching the mental model of every other log view.
  */
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
 
 import { AppButton } from '@/components/app-button';
 import { ScreenHeader } from '@/components/screen-header';

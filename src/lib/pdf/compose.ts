@@ -15,8 +15,8 @@ import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
-import { getSetting } from '@/lib/db/queries';
 import { fetchOcrResult } from '@/lib/db/ocr-queries';
+import { getSetting } from '@/lib/db/queries';
 import {
     LETTER,
     packColumns,

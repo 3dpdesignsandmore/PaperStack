@@ -24,6 +24,7 @@ import { ThemedView } from '@/components/themed-view';
 import { CardShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
+import { fetchReceiptData, saveReceiptData } from '@/lib/db/ocr-queries';
 import { appendScanSession, persistOptionsFromSetting, scanRootDir } from '@/lib/db/persist-scan';
 import {
     addTagToDocument,
@@ -38,10 +39,9 @@ import {
     SCAN_QUALITY_KEY,
     type TagRow,
 } from '@/lib/db/queries';
-import { fetchReceiptData, saveReceiptData } from '@/lib/db/ocr-queries';
-import { runOcrForDocument } from '@/lib/ocr/pipeline';
 import { logInfo, logThrown } from '@/lib/debug-log';
 import type { ReceiptData, ScanDocument, ScanPage } from '@/lib/model';
+import { runOcrForDocument } from '@/lib/ocr/pipeline';
 import { scanPages } from '@/lib/scanner';
 
 export default function DocumentDetailScreen() {
