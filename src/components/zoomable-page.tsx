@@ -76,10 +76,6 @@ export function ZoomablePage({
   // absolutely from this snapshot, so the clamping of one frame can
   // never corrupt the next (no integration drift).
   const pinchStart = useSharedValue<ZoomState>({ scale: MIN_SCALE, translateX: 0, translateY: 0 });
-  // True while the pinch owns the pointers — the pan stands down (the
-  // pinch's focal math already carries the finger travel; without this
-  // both would count it and the page would run away).
-  const isPinching = useSharedValue(false);
   // React mirror of "this page is zoomed": gates the pan gesture. It
   // flips mid-pinch, which is fine — pan can only activate on a fresh
   // touch, so it arms for the drag AFTER the pinch completes.
@@ -111,8 +107,6 @@ export function ZoomablePage({
     translateY.value = withTiming(next.translateY, { duration });
   }
 
-  /** Zoom-cutoff crossing on the JS thread: pan gate + pager lock. */
-
   // No reset-on-leave effect by design (a first version had one; the
   // react-compiler lint and the state machine itself made it dead
   // weight): the pager's swipe lock means a zoomed page can never be
@@ -138,7 +132,6 @@ export function ZoomablePage({
   const pinch = Gesture.Pinch()
     .onBegin(() => {
       pinchStart.value = readZoom();
-      isPinching.value = true;
     })
     .onUpdate((event) => {
       const next = zoomAtFocal(
@@ -151,7 +144,6 @@ export function ZoomablePage({
       writeZoom(clampPan(next, fitted, viewport));
     })
     .onFinalize(() => {
-      isPinching.value = false;
       // Released below the threshold springs home — the spring-back
       // passes through the cutoff and releases the swipe lock itself.
       if (scale.value < RESET_THRESHOLD) {
@@ -163,8 +155,18 @@ export function ZoomablePage({
     .enabled(zoomed)
     // onChange (not onUpdate): changeX/changeY are the per-frame
     // deltas — a release-and-regrip mid-drag can't jump the image.
+    //
+    // Pointer-count gate (fixes the dead-pan bug, 2026-09-18): events
+    // carrying more than one pointer are a pinch's finger travel — the
+    // pinch's own focal math already accounts for it, so pan skips
+    // them. A first version gated this on an `isPinching` flag set in
+    // pinch.onBegin; that fires when the gesture begins TRACKING (the
+    // first pointer of even a single-finger drag), so the flag stayed
+    // true for the whole drag and pan never applied anything.
+    // numberOfPointers is per-event truth — no flag, no ordering
+    // assumptions, nothing to fall out of step.
     .onChange((event) => {
-      if (isPinching.value) {
+      if (event.numberOfPointers > 1) {
         return;
       }
       writeZoom(addPan(readZoom(), event.changeX, event.changeY, fitted, viewport));
