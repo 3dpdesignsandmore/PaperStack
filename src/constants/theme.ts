@@ -280,6 +280,37 @@ export const Radius = {
 } as const;
 
 /**
+ * The fullscreen page viewer's chrome (`/document/view/[id]`) is
+ * deliberately theme-independent (product decision 2026-09-18): receipts
+ * are white, and the Apple-Photos convention — fixed near-black surround,
+ * light chrome — is the highest-contrast way to read one. Centralized
+ * here so the fixed-palette decision is stated once and the values
+ * aren't scattered as literals across the viewer's files. Do not resolve
+ * these through `useTheme()`; they intentionally ignore the palette.
+ */
+export const ViewerChrome = {
+  /** The near-black page surround. */
+  background: '#0A0A0C',
+  /** Primary chrome ink — icons on the dark surround. */
+  foreground: '#FFFFFFE6',
+  /** Dimmed chrome ink — indicators, empty-state copy. */
+  foregroundDim: '#FFFFFFB3',
+  /** Close-button scrim against the page. */
+  controlScrim: '#FFFFFF1A',
+  /** Activity-indicator tint while pages load. */
+  progress: '#FFFFFFCC',
+} as const;
+
+/**
+ * Placeholder fill behind a page/cell image while it decodes — the
+ * medium-gray translucent square common to viewer, detail-screen, and
+ * reorder-thumb styles. Not part of `ViewerChrome`: it sits INSIDE the
+ * letterboxed page (against app-themed surroundings in the detail list),
+ * so it's a shared neutral, not viewer chrome.
+ */
+export const PagePlaceholderFill = '#80808040';
+
+/**
  * Custom families loaded via `useFonts` in `src/app/_layout.tsx` — every
  * value here must have a matching entry there. Google Fonts ship as static
  * per-weight files rather than a single variable font RN can reweight with

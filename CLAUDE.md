@@ -11,11 +11,11 @@ npm run start   # expo start — dev server, choose platform interactively
 npm run android # expo start --android
 npm run ios     # expo start --ios
 npm run lint    # expo lint
-npm test        # vitest run — unit tests (N-up layout engine)
+npm test        # vitest run — unit tests over the pure modules
 run.bat         # expo start --dev-client --port 8082 (daily driver on Windows)
 ```
 
-`npm test` runs Vitest — `src/lib/layout/pack-columns.test.ts` unit-tests the pure N-up layout engine. `npm run reset-project` (runs `scripts/reset-project.js`) wipes the starter template — moves `src/app` to `app-example` and creates a blank `app` — do not run it without being asked.
+`npm test` runs Vitest over the dependency-free modules: `src/lib/layout/` (`pack-columns.ts` N-up packing, `zoom-math.ts` viewer geometry), `src/lib/ocr/extract-receipt.ts`, `src/lib/pdf/filename.ts` and `src/lib/recipients.ts`. There is no component or integration layer — anything touching React, a native module or the DB is verified on device. `npm run reset-project` (runs `scripts/reset-project.js`) wipes the starter template — moves `src/app` to `app-example` and creates a blank `app` — do not run it without being asked.
 
 ## Architecture
 
@@ -88,6 +88,7 @@ PaperStack scans documents and receipts, annotates them, and exports/shares them
 - **Scans and PDFs go in the documents directory**, never `Caches` or `tmp`. iOS backs the documents directory up to iCloud automatically, which is the app's entire backup story; `Caches` is excluded from backup and may be purged by the OS.
 - **Install Expo packages with `npx expo install`, never `npm install`**, so versions stay aligned with SDK 57.
 - **`expo-updates` is wired up in `app.json`** (`updates.url`, `runtimeVersion.policy: appVersion`) — the app phones Expo's servers to check for OTA JS updates. No user data is sent, but it is network traffic: the privacy policy and the "nothing leaves your device" store copy must account for it (or updates get disabled before release). Decide before Phase 8.
+- **A Nitro module is not an Expo module.** `requireOptionalNativeModule('NitroOcr')` from `expo` queries EXPO's native module registry, and `react-native-nitro-ocr` registers as a Nitro HybridObject via `nitro.json` autolinking — no `expo-module.config.json`, no `ModuleDefinition`. That lookup returns null on every binary, engine present or absent, so an availability gate built on it silently blocked OCR on every build until 2026-09-18. `react-native-nitro-modules` already performs the equivalent check at module scope (`TurboModuleRegistry.getEnforcing('NitroModules')`, a miss wrapped in `ModuleNotFoundError`), so let the dynamic import throw and catch it. See `src/lib/ocr/recognize.ts`'s header and `ocr_issue.md`.
 - Check <https://docs.expo.dev/versions/v57.0.0/> before writing code against an Expo package — several APIs changed materially in SDK 54–57.
 
 ### Redaction is a security feature
@@ -96,4 +97,12 @@ If implementing `AnnotationType.Redaction`: drawing an opaque rectangle over an 
 
 ### Geometry belongs in a pure module
 
-The multi-receipt page-packing math lives in `src/lib/layout/` as dependency-free functions (no React, no native modules) so it can be unit tested in isolation. Do not inline page geometry into component render logic. See `plan/PLAN.md` §5 for the algorithm and the legibility thresholds.
+Geometry lives in `src/lib/layout/` as dependency-free functions (no React,
+no native modules) so it can be unit tested in isolation. Do not inline it
+into component render logic. Two instances, both with tests beside them:
+
+- `pack-columns.ts` — multi-receipt page packing. See `plan/PLAN.md` §5 for
+  the algorithm and the legibility thresholds.
+- `zoom-math.ts` — fullscreen viewer pinch/pan geometry. Each export carries
+  a `'worklet'` directive so `zoomable-page.tsx` can call it from Reanimated
+  gesture callbacks on the UI thread; the directive is inert under Vitest.

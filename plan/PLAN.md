@@ -321,8 +321,8 @@ src/app/(tabs)/library.tsx        Grid of documents; long-press or Combine to mu
 src/app/(tabs)/scan.tsx           Deep-link target only — runs capture on focus, backs out on cancel
 src/app/settings.tsx              Pushed: appearance, palette, capture settings, filename template, recipients
 src/app/compose.tsx               N-up compose: `?id=<docId>` or `?ids=<id,id,...>`
-src/app/document/[id].tsx         Detail: page list, Export (one per page / Combine), rename, add pages, delete
-src/app/ocr-spike.tsx             (removed 2026-09-16 — spike served its purpose; see git history)
+src/app/document/[id].tsx         Detail: page list, Export (one per page / Combine), rename, add pages, delete; tap a page → fullscreen viewer
+src/app/document/view/[id].tsx    Fullscreen page viewer (2026-09-18): pinch-zoom (6×, focal-anchored), pan while zoomed, double-tap 2.5×, horizontal page swipe (`?page=N` 0-based); dark surround. Geometry in `src/lib/layout/zoom-math.ts`, gestures in `src/components/zoomable-page.tsx`
 ```
 
 Still-planned routes, unchanged: `document/[id]/edit.tsx` (annotation canvas, Phase 6) and `receipt/[id].tsx` (extracted-fields editor, Phase 5), pushing onto the same root Stack.
@@ -383,7 +383,7 @@ Each phase should end with something runnable on your phone.
 |---|---|---|
 | **0. Foundation** | `expo-dev-client` + EAS dev build on device; **`pdf-lib` invisible-text spike**; strip web + starter template (§2); bundle IDs + permission strings + `eas.json`; storage directory decision (§9); SQLite schema + migrations; zustand store | 4–5 days |
 | **1. Capture** | Scanner plugin integrated; scans saved to disk + DB; thumbnails | 2–3 days |
-| **2. Library** | Grid, document detail, rename/delete/reorder/tag, search by title | ✅ shipped 2026-09-16 — the remaining scope (page reorder with commit/cancel, tags with cascade delete of orphan tags, debounced title search) joins the earlier grid/detail/rename/delete/add-pages/Combine. | 3–4 days |
+| **2. Library** | Grid, document detail, rename/delete/reorder/tag, search by title | ✅ shipped 2026-09-16 — the remaining scope (page reorder with commit/cancel, tags with cascade delete of orphan tags, debounced title search) joins the earlier grid/detail/rename/delete/add-pages/Combine. Post-ship additions (fullscreen page viewer — pinch/pan/double-tap, 2026-09-18) are recorded in §8 rather than widened into this row. | 3–4 days |
 | **3. PDF export (single)** | `pdf-lib` polyfills solved; one-page-per-scan export; share sheet | 3–5 days |
 | **4. N-up engine** | Column packing, legibility guard, modes, captions, separators, live preview, downscaling, unit tests | ✅ shipped 2026-09-15, polished 2026-09-16: Auto/2/3/4/6 column chips with `fitColumns` auto-fit; Library multi-select Combine (`/compose?ids=`) alongside Export → Combine; captions are `title · pN`. Per-tile downscale-before-embed still pending — stored 2000px JPEGs are currently embedded as-is. | 5–7 days |
 | **5. OCR** | Library spike, text layer, extraction heuristics, correction UI | ✅ shipped 2026-09-16, **engine verified on device 2026-09-17** (first EAS preview build): a fresh scan ran the full pipeline — `recognize()` ~290 ms, 13 blocks / 651 chars, merchant extracted, `total —` on a non-receipt (correct behavior — no hallucinated total), bounding boxes confirmed **normalized 0..1** (not pixels — engine's Kotlin `ResultMapper` divides by image dims; invisible-text layer placement is sound). No crash/reload in release — confirming the dev-only JS-context reload was a Metro/dev-client artifact, not an app defect (ocr_issue.md). Remaining cleanup: drop the `ocr-step` breadcrumbs once the exported-PDF text layer is spot-checked in a viewer (select/copy lands on the visible words); receipt fields still read the first page only — multi-page and a document-vs-receipt kind split remain future decisions. | 5–7 days |

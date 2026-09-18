@@ -21,7 +21,7 @@ import { ScreenHeader } from '@/components/screen-header';
 import { SendSheet } from '@/components/send-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { CardShadow, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, MaxContentWidth, PagePlaceholderFill, Radius, Spacing } from '@/constants/theme';
 import { usePressScale } from '@/hooks/use-press-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchReceiptData, saveReceiptData } from '@/lib/db/ocr-queries';
@@ -524,13 +524,24 @@ export default function DocumentDetailScreen() {
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => (
           <AppCard style={styles.pageCard}>
-            <Image
-              source={{ uri: item.imagePath }}
-              style={[styles.pageImage, { aspectRatio: item.widthPx / item.heightPx }]}
-              contentFit="contain"
-              recyclingKey={item.id}
-              transition={150}
-            />
+            {/* Tap a page to open the fullscreen zoom viewer
+                (2026-09-18) — cards are Pressable for the whole card
+                area; the page-count label below sits outside the hit
+                target. */}
+            <Pressable
+              onPress={() =>
+                router.push(`/document/view/${document.id}?page=${index}`)
+              }
+              accessibilityRole="imagebutton"
+              accessibilityLabel={`Open page ${index + 1} fullscreen`}>
+              <Image
+                source={{ uri: item.imagePath }}
+                style={[styles.pageImage, { aspectRatio: item.widthPx / item.heightPx }]}
+                contentFit="contain"
+                recyclingKey={item.id}
+                transition={150}
+              />
+            </Pressable>
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               Page {index + 1} of {pages.length} · {item.widthPx}×{item.heightPx}
             </ThemedText>
@@ -758,7 +769,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 72,
     borderRadius: Radius.small,
-    backgroundColor: '#80808040',
+    backgroundColor: PagePlaceholderFill,
   },
   reorderLabel: {
     flex: 1,
@@ -783,7 +794,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     minHeight: 120,
     borderRadius: Radius.small,
-    backgroundColor: '#80808040',
+    backgroundColor: PagePlaceholderFill,
   },
   // Same pill silhouette as the floating tab bar, sized for four icon+label
   // items instead of three tab items. `bottom` is set inline from the

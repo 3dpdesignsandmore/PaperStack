@@ -11,6 +11,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { StaleBuildGuard } from '@/components/stale-build-guard';
 import { ThemeProvider } from '@/hooks/theme-provider';
@@ -73,18 +74,20 @@ export default function RootLayout() {
   }
 
   return (
-    <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrate}>
-      {/* Hydrates the detailed-logging deadline from the settings row so
-          the 30-minute window survives reloads/restarts unchanged — the
-          same wall-clock deadline, never a fresh one. Inside the provider
-          so the database exists. */}
-      <DetailDeadlineHydrator />
-      <ThemeProvider>
-        <StaleBuildGuard>
-          <Stack screenOptions={{ headerShown: false }} />
-        </StaleBuildGuard>
-      </ThemeProvider>
-    </SQLiteProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrate}>
+        {/* Hydrates the detailed-logging deadline from the settings row so
+            the 30-minute window survives reloads/restarts unchanged — the
+            same wall-clock deadline, never a fresh one. Inside the provider
+            so the database exists. */}
+        <DetailDeadlineHydrator />
+        <ThemeProvider>
+          <StaleBuildGuard>
+            <Stack screenOptions={{ headerShown: false }} />
+          </StaleBuildGuard>
+        </ThemeProvider>
+      </SQLiteProvider>
+    </GestureHandlerRootView>
   );
 }
 
