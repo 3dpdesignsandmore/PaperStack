@@ -25,25 +25,25 @@ import { useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  runOnJS,
-  useAnimatedReaction,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
+    runOnJS,
+    useAnimatedReaction,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
 } from 'react-native-reanimated';
 
 import { PagePlaceholderFill, Radius } from '@/constants/theme';
 import {
-  DOUBLE_TAP_SCALE,
-  MIN_SCALE,
-  RESET_THRESHOLD,
-  ZOOMED_CUTOFF,
-  addPan,
-  clampPan,
-  fitInView,
-  zoomAtFocal,
-  type Size,
-  type ZoomState,
+    DOUBLE_TAP_SCALE,
+    MIN_SCALE,
+    RESET_THRESHOLD,
+    ZOOMED_CUTOFF,
+    addPan,
+    clampPan,
+    fitInView,
+    zoomAtFocal,
+    type Size,
+    type ZoomState,
 } from '@/lib/layout/zoom-math';
 import type { ScanPage } from '@/lib/model';
 
