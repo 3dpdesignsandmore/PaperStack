@@ -14,9 +14,10 @@
  * would be permanently hidden behind its backdrop and never reachable.
  */
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
+import { DialogBackdrop } from '@/components/dialog-backdrop';
 import { ThemedText } from '@/components/themed-text';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
 import type { CaptureDialogState } from '@/hooks/use-capture';
@@ -40,17 +41,27 @@ export function SaveScanDialog({
 
   // Reset the append list's scroll position each time the dialog reopens,
   // so a stale offset from a previous scan session doesn't carry over.
-  const [listKey, setListKey] = useState(0);
-  useResetOnOpen(visible, () => setListKey((k) => k + 1));
+  const [scrollKey, setScrollKey] = useState(0);
+  useResetOnOpen(visible, () => setScrollKey((k) => k + 1));
 
   const visibleDocs = recentDocs.slice(0, 10);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <DialogBackdrop visible={visible} onDismiss={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable
           style={[styles.dialogCard, CardShadow(theme.shadow), { backgroundColor: theme.background }]}
           onPress={(e) => e.stopPropagation()}>
+          {/* One ScrollView for the whole card: the card clamps at 85% of
+              the space left once the keyboard takes its share (the shared
+              backdrop pads for it), and the content scrolls inside rather
+              than clipping the bottom buttons. The append rows are plain
+              children now, not a nested scroll list — one scrollable per
+              axis, no scroller fighting. */}
+          <ScrollView
+            key={scrollKey}
+            contentContainerStyle={styles.cardContent}
+            keyboardShouldPersistTaps="handled">
           <ThemedText type="subtitle">Save {pageCount} page{pageCount === 1 ? '' : 's'}</ThemedText>
           <ThemedText type="small" style={[styles.dialogMessage, { color: theme.textSecondary }]}>
             {recentDocs.length > 0
@@ -93,35 +104,34 @@ export function SaveScanDialog({
               <ThemedText type="label" style={{ color: theme.textSecondary }}>
                 Or add to an existing document
               </ThemedText>
-              <ScrollView key={listKey} style={styles.appendList} keyboardShouldPersistTaps="handled">
-                {visibleDocs.map((doc, index) => (
-                  <Pressable
-                    key={doc.id}
-                    onPress={() => onAppend(doc)}
-                    style={({ pressed }) => [
-                      styles.appendRow,
-                      index < visibleDocs.length - 1 && {
-                        borderBottomWidth: StyleSheet.hairlineWidth,
-                        borderBottomColor: theme.border,
-                      },
-                      pressed && { backgroundColor: theme.backgroundElement },
-                    ]}>
-                    <ThemedText numberOfLines={1} style={styles.appendTitle}>
-                      {doc.title}
-                    </ThemedText>
-                    <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                      {doc.pageCount} page{doc.pageCount === 1 ? '' : 's'}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              {visibleDocs.map((doc, index) => (
+                <Pressable
+                  key={doc.id}
+                  onPress={() => onAppend(doc)}
+                  style={({ pressed }) => [
+                    styles.appendRow,
+                    index < visibleDocs.length - 1 && {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.border,
+                    },
+                    pressed && { backgroundColor: theme.backgroundElement },
+                  ]}>
+                  <ThemedText numberOfLines={1} style={styles.appendTitle}>
+                    {doc.title}
+                  </ThemedText>
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    {doc.pageCount} page{doc.pageCount === 1 ? '' : 's'}
+                  </ThemedText>
+                </Pressable>
+              ))}
             </>
           )}
 
           <AppButton label="Cancel" variant="outline" onPress={onCancel} />
+          </ScrollView>
         </Pressable>
       </Pressable>
-    </Modal>
+    </DialogBackdrop>
   );
 }
 
@@ -139,6 +149,11 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     maxHeight: '85%',
+  },
+  // Vertical rhythm for the card's children — on the ScrollView's
+  // content container, since the scroller replaced the card as their
+  // direct parent.
+  cardContent: {
     gap: Spacing.three,
   },
   dialogMessage: {
@@ -150,9 +165,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 16,
-  },
-  appendList: {
-    maxHeight: 220,
   },
   appendRow: {
     flexDirection: 'row',

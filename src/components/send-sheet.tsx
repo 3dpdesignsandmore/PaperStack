@@ -18,14 +18,15 @@ import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    Modal,
     Pressable,
+    ScrollView,
     StyleSheet,
     TextInput,
     View,
 } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
+import { DialogBackdrop } from '@/components/dialog-backdrop';
 import { RecipientDropdown, RecipientPickerSheet, type RecipientAddress } from '@/components/recipient-picker';
 import { ThemedText } from '@/components/themed-text';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
@@ -248,7 +249,7 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <DialogBackdrop visible={visible} onDismiss={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable
           style={[
@@ -257,6 +258,14 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
             { backgroundColor: theme.background },
           ]}
           onPress={(e) => e.stopPropagation()}>
+          {/* The card clamps at 85% of the space left once the keyboard
+              takes its share (the shared backdrop pads for it); the
+              content scrolls so no button ever falls off the card on a
+              short phone. The recipient picker nested below is NOT in
+              here — a sibling of the scroller, outside the card press. */}
+          <ScrollView
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled">
           <ThemedText type="subtitle">Send to</ThemedText>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
             PDF ready: {subject}
@@ -447,6 +456,7 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
               </View>
             </>
           )}
+          </ScrollView>
         </Pressable>
       </Pressable>
 
@@ -459,7 +469,7 @@ export function SendSheet({ visible, fileUri, subject, onClose, onShareViaOs }: 
         inline
         onClose={() => setPickerOpen(false)}
       />
-    </Modal>
+    </DialogBackdrop>
   );
 }
 
@@ -476,8 +486,14 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     width: '100%',
     maxWidth: 420,
-    gap: Spacing.three,
     maxHeight: '85%',
+  },
+  // Vertical rhythm for the sheet's children — on the ScrollView's
+  // content container, since the scroller replaced the card as their
+  // direct parent. View padding (the card's own) still frames the
+  // scroller visually.
+  sheetContent: {
+    gap: Spacing.three,
   },
   pickerOpenRow: {
     flexDirection: 'row',

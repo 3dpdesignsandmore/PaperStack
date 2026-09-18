@@ -10,11 +10,12 @@
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/app-button';
 import { AppCard } from '@/components/app-card';
+import { DialogBackdrop } from '@/components/dialog-backdrop';
 import { RecipientDropdown, RecipientPickerSheet } from '@/components/recipient-picker';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
@@ -284,11 +285,17 @@ function RecipientFormDialog({ visible, editing, onSave, onCancel }: RecipientFo
   });
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <DialogBackdrop visible={visible} onDismiss={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable
           style={[styles.dialogCard, CardShadow(theme.shadow), { backgroundColor: theme.background }]}
           onPress={(e) => e.stopPropagation()}>
+          {/* Four stacked inputs outrun a short screen once the keyboard
+              takes its share (the shared backdrop pads for it); the card
+              clamps at 85% and scrolls so Save never falls off. */}
+          <ScrollView
+            contentContainerStyle={styles.dialogFields}
+            keyboardShouldPersistTaps="handled">
           <ThemedText type="subtitle">{editing == null ? 'Add recipient' : `Edit ${editing.label}`}</ThemedText>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
             A person you send PDFs to. Fill any channel — you can pick which to use when sending.
@@ -345,9 +352,10 @@ function RecipientFormDialog({ visible, editing, onSave, onCancel }: RecipientFo
               onPress={() => onSave(label, email, email2, phone)}
             />
           </View>
+          </ScrollView>
         </Pressable>
       </Pressable>
-    </Modal>
+    </DialogBackdrop>
   );
 }
 
@@ -397,6 +405,12 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     width: '100%',
     maxWidth: 420,
+    maxHeight: '85%',
+  },
+  // Vertical rhythm for the form's children — on the ScrollView's
+  // content container, since the scroller replaced the card as their
+  // direct parent.
+  dialogFields: {
     gap: Spacing.three,
   },
   dialogInput: {

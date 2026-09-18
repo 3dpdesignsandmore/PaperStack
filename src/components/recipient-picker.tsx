@@ -16,8 +16,9 @@
  */
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { DialogBackdrop } from '@/components/dialog-backdrop';
 import { ThemedText } from '@/components/themed-text';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
 import { useResetOnOpen } from '@/hooks/use-reset-on-open';
@@ -146,7 +147,7 @@ export function RecipientPickerSheet({
   });
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <DialogBackdrop visible={visible} onDismiss={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable
           style={[
@@ -245,7 +246,7 @@ export function RecipientPickerSheet({
           />
         </Pressable>
       </Pressable>
-    </Modal>
+    </DialogBackdrop>
   );
 }
 
@@ -346,6 +347,10 @@ const styles = StyleSheet.create({
   },
   pickerList: {
     flexGrow: 0,
+    // Shrinks when the sheet is height-clamped (keyboard up on a short
+    // phone) instead of pushing rows behind the keyboard — the search
+    // box above it stays put.
+    flexShrink: 1,
     maxHeight: 320,
   },
   searchInput: {

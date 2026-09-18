@@ -8,9 +8,10 @@
  * mid-flow decision needs Yes/No-style confirmation; keep `Alert.alert`
  * for incidental error toasts where the system look is fine.
  */
-import { Modal, Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
+import { DialogBackdrop } from '@/components/dialog-backdrop';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
@@ -46,11 +47,9 @@ export function ConfirmDialog({
   const theme = useTheme();
 
   return (
-    <Modal
+    <DialogBackdrop
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}>
+      onDismiss={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable
           style={[styles.card, CardShadow(theme.shadow), { backgroundColor: theme.background }]}
@@ -73,7 +72,7 @@ export function ConfirmDialog({
           </ThemedView>
         </Pressable>
       </Pressable>
-    </Modal>
+    </DialogBackdrop>
   );
 }
 

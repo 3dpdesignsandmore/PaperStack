@@ -6,7 +6,6 @@
  */
 import { useState } from 'react';
 import {
-    Modal,
     Platform,
     Pressable,
     StyleSheet,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 
 import { AppButton } from '@/components/app-button';
+import { DialogBackdrop } from '@/components/dialog-backdrop';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CardShadow, Radius, Spacing } from '@/constants/theme';
@@ -58,11 +58,9 @@ export function PromptDialog({
   useResetOnOpen(visible, () => setValue(initialValue));
 
   return (
-    <Modal
+    <DialogBackdrop
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}>
+      onDismiss={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable
           style={[styles.card, CardShadow(theme.shadow), { backgroundColor: theme.background }]}
@@ -109,7 +107,7 @@ export function PromptDialog({
           </ThemedView>
         </Pressable>
       </Pressable>
-    </Modal>
+    </DialogBackdrop>
   );
 }
 
