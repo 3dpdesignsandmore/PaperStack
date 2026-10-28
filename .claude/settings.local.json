@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(xargs grep -l \"setParams\")",
+      "Bash(xargs cat)",
+      "Bash(npx expo *)",
+      "Bash(xargs grep -n \"allowsMultipleSelection\\\\|mediaTypes\\\\|ImagePickerAsset\\\\b\\\\|ImagePickerResult\\\\b\\\\|selectionLimit\\\\|interface ImagePickerOptions\\\\|uri:\" -A2)",
+      "Bash(xargs grep -l \"photosPermission\\\\|withImagePicker\")",
+      "Bash(identify \"paperstack logo.png\")",
+      "Bash(where python *)",
+      "Bash(where python3 *)",
+      "Bash(where magick *)",
+      "Bash(where convert *)",
+      "Bash(timeout 15 python3 -c \"import PIL; print\\(PIL.__version__\\)\")",
+      "Bash(echo \"exit=$?\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3)",
+      "Bash(python3 -c \"import scipy; print\\(scipy.__version__\\)\")"
+    ]
+  }
+}
