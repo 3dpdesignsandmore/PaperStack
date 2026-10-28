@@ -436,7 +436,7 @@ export default function SettingsScreen() {
               <LinkRow
                 label="Contact"
                 onPress={() =>
-                  Linking.openURL('mailto:[TO FILL]').catch((e: unknown) => {
+                  Linking.openURL('mailto:support@3dpdesignsandmore.com').catch((e: unknown) => {
                     logThrown('settings-contact', e);
                     Alert.alert('Could not open email', e instanceof Error ? e.message : String(e));
                   })

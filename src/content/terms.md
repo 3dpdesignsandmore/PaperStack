@@ -32,4 +32,4 @@ These terms may change with app updates. Continued use after an update means you
 
 ## Contact
 
-**[TO FILL: contact address]**
+**support@3dpdesignsandmore.com**
