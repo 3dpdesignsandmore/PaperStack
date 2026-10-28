@@ -34,15 +34,18 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
       { text: 'Privacy Policy', heading: true },
       { text: 'Last updated: October 28, 2026' },
       {
-        text: 'PaperStack was built so that the privacy story is simple enough to state in one line: your documents never leave your device.',
+        text: 'PaperStack is made by 3DP Designs and More, a small business in Grand Blanc, Michigan. It was built so that the privacy story is simple enough to state in one line: your documents never leave your device unless you send or share them yourself.',
       },
       { text: 'What we collect', heading: true },
       {
-        text: 'Nothing. PaperStack collects no personal information, no usage statistics, no crash reports, and no analytics. There are no accounts, no sign-ins, and no servers storing anything about you.',
+        text: 'Nothing. PaperStack has no accounts, no sign-ins and no servers of its own, and it contains no analytics, advertising or tracking code. We never receive your scans, the text in them, or any information about how you use the app.',
       },
       { text: 'What is stored, and where', heading: true },
       {
-        text: 'Everything the app creates — scans, exported PDFs, tags, recipients, and settings — is stored only in the app\u2019s own storage on your device. On iOS, that storage is included in your device\u2019s normal backups (for example, iCloud backups, if you have them enabled). Removing the app removes its data.',
+        text: 'Everything the app creates — scans, exported PDFs, tags, recipients, and settings — is stored only in the app\u2019s own storage on your device. Recipients are names and addresses you type in yourself; PaperStack does not read your device\u2019s contacts.',
+      },
+      {
+        text: 'Device backups. Like other apps, the app\u2019s storage is included in your device\u2019s own backups if you have them turned on: iCloud Backup on iPhone, and Google\u2019s Android backup on Android. Android limits each app\u2019s backup to a fixed size, so a large library may only be partly backed up. Those backups belong to your Apple or Google account and are governed by their policies; we have no access to them.',
       },
       {
         text: 'Images that arrive through your device\u2019s system share sheet are treated the same as camera scans: stored on your device, processed locally, never uploaded.',
@@ -53,8 +56,25 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
       {
         text: 'Because PaperStack has no service of its own to break into, the security of your documents is the security of your device itself — the same lock screen and encryption that protect the rest of your phone protect your scans.',
       },
+      { text: 'Permissions the app asks for', heading: true },
       {
-        text: 'Text recognition (OCR) runs entirely on your device. When you use features that recognize text in your scans, the processing is performed locally by the operating system\u2019s own text-recognition engine. The text never travels anywhere for processing.',
+        text: 'Camera \u2014 to scan documents and receipts. Nothing is recorded except the pages you choose to keep.',
+      },
+      {
+        text: 'Photos \u2014 only when you choose to add an existing photo as a document. The app sees only the photos you pick.',
+      },
+      {
+        text: 'PaperStack does not ask for your location, contacts, microphone or any other permission.',
+      },
+      { text: 'Scanning and text recognition', heading: true },
+      {
+        text: 'Scanning pages and recognizing the text in them happens entirely on your device. Your images and their text are never uploaded for processing.',
+      },
+      {
+        text: 'On iPhone, this is done by Apple\u2019s built-in document scanner and text-recognition engine.',
+      },
+      {
+        text: 'On Android, it is done by Google\u2019s ML Kit, which runs on the device through Google Play services. ML Kit does not send your images or recognized text anywhere, but as part of how Google provides it, it may contact Google to download updates to its recognition models and send Google anonymous technical metrics about how the scanning and recognition features perform (for example, device type and how long processing took). This is collected by Google under ML Kit\u2019s terms (developers.google.com/ml-kit/terms); we don\u2019t receive it.',
       },
       { text: 'What is transmitted', heading: true },
       {
@@ -64,7 +84,22 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
         text: 'Sharing. When you use the share option, the file is handed directly to your device\u2019s system share sheet.',
       },
       {
-        text: 'App updates. If you installed PaperStack from an app store or receive app updates over the air, the update service knows that an update was downloaded, like any other app update. No information about your documents or how you use the app is included.',
+        text: 'App updates. PaperStack receives updates from the App Store or Google Play, and may also download small updates directly through Expo, the service the app is built with. Checking for an update involves the usual technical details any download does — your device\u2019s network address, its platform and the app version. No information about your documents or how you use the app is included.',
+      },
+      {
+        text: 'Crash reports from your device. PaperStack itself sends no crash reports. If you have allowed your iPhone or Android device to share diagnostics with app developers, Apple or Google may pass us anonymous crash data under their own policies. You can turn that off in your device\u2019s settings.',
+      },
+      { text: 'Deleting your data', heading: true },
+      {
+        text: 'Because there is no account and nothing is stored on our side, there is nothing for us to delete. Deleting a document in the app removes it from the app, and removing the app removes all of its data from your device. Copies you have sent, shared or saved elsewhere — and your own device backups — stay where you put them.',
+      },
+      { text: 'Children', heading: true },
+      {
+        text: 'PaperStack collects no information from anyone, including children under 13.',
+      },
+      { text: 'Changes to this policy', heading: true },
+      {
+        text: 'If a future version of PaperStack changes anything described here, we\u2019ll update this page and the date at the top.',
       },
       { text: 'Contact', heading: true },
       { text: 'Questions about this policy: support@3dpdesignsandmore.com' },
