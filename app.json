@@ -35,7 +35,22 @@
           "imageWidth": 200
         }
       ],
-      "expo-sharing",
+      [
+        "expo-sharing",
+        {
+          "ios": {
+            "enabled": true,
+            "activationRule": {
+              "supportsImageWithMaxCount": 10
+            }
+          },
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["image/*"],
+            "multipleShareMimeTypes": ["image/*"]
+          }
+        }
+      ],
       "react-native-document-scanner-plugin",
       "expo-sqlite",
       "expo-font",

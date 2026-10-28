@@ -1,7 +1,7 @@
 # PaperStack — Technical Plan
 
-**Version:** 0.4
-**Date:** 2026-09-16
+**Version:** 0.5
+**Date:** 2026-09-19
 **Repo:** `D:\Git\PaperStack`
 **Stack:** Expo SDK 57 · React Native 0.86.3 · React 19.2.3 · TypeScript 6.0.3
 **Target:** iOS + Android, public store release
@@ -88,7 +88,7 @@ The alternative — ejecting to bare React Native — is unnecessary. Expo confi
 | `expo-sqlite` | Document/page/annotation metadata |
 | `expo-file-system` | Scans and generated PDFs on disk |
 | `expo-image-manipulator` | Downscale before PDF embed (critical — see §5) |
-| `expo-sharing` | Hand PDFs to the OS share sheet |
+| `expo-sharing` | Hand PDFs to the OS share sheet. SDK 57 also supports the reverse direction — registering as a share *target* that receives shared images (e.g. hardware screenshots) into the import flow; see "Share-target import" under §8. No new dependency |
 | `expo-print` | Fallback PDF path only; see §4 note |
 
 **`expo-file-system` changed in SDK 54.** There is a new synchronous `File` / `Directory` class API, and the old function-based API now lives at `expo-file-system/legacy`. Write new code against the new API — most tutorials and LLM training data predate it and will produce `legacy` code that still works but will rot.
@@ -325,11 +325,27 @@ src/app/document/[id].tsx         Detail: page list, Export (one per page / Comb
 src/app/document/view/[id].tsx    Fullscreen page viewer (2026-09-18): pinch-zoom (6×, focal-anchored), pan while zoomed, double-tap 2.5×, horizontal page swipe (`?page=N` 0-based); dark surround. Geometry in `src/lib/layout/zoom-math.ts`, gestures in `src/components/zoomable-page.tsx`
 ```
 
-Still-planned routes, unchanged: `document/[id]/edit.tsx` (annotation canvas, Phase 6) and `receipt/[id].tsx` (extracted-fields editor, Phase 5), pushing onto the same root Stack.
+Still-planned routes: `document/[id]/edit.tsx` (annotation canvas, Phase 6), `receipt/[id].tsx` (extracted-fields editor, Phase 5), and `import-shared.tsx` (share-target intake — see the section below), all pushing onto the same root Stack, plus a `src/app/+native-intent.ts` hook file to route incoming OS shares.
 
 `src/components/app-tabs.tsx` now uses the classic `Tabs` from `expo-router/js-tabs` rendered through the custom `FloatingTabBar` (`src/components/floating-tab-bar.tsx`) — the `NativeTabs` arrangement described in earlier drafts was replaced when the floating pill landed (plan/UI.md §3).
 
 **The compose screen is the heart of the app.** Give it a live page preview that re-renders as the column count changes — a thumbnail of the actual packed page, not an abstract diagram. That immediate feedback is what makes the feature feel considered rather than fiddly.
+
+### Share-target import — planned 2026-09-19
+
+A third capture path alongside the scanner and photo library: **PaperStack appears in the OS share sheet.** The motivating case is the hardware screenshot — screenshot a receipt confirmation or a web page, tap Share, pick PaperStack, and land straight in the save flow without ever saving to the gallery first. Mechanism (`expo-sharing`, SDK 57; already installed, no new dependency):
+
+1. `app.json` config-plugin block — Android: `singleShareMimeTypes: ["image/*"]` (add `multipleShareMimeTypes` if multi-image shares are wanted); iOS: activation rule `supportsImageWithMaxCount: N`.
+2. `src/app/+native-intent.ts` — the router hook (`getSharedPayloads`) that detects an incoming share and redirects to the intake route.
+3. Intake route (`import-shared.tsx`): `useIncomingShare` resolves the payloads; **copy the content URIs into `Documents/` first** — shared payloads are short-lived system copies, and scans live in Documents, never Caches — then drive the existing `useSaveFlow` → `SaveScanDialog` (new document / append / split-save). Everything downstream (OCR, packing, export) is then free. `clearSharedPayloads()` once the bytes are ours.
+4. No incoming payload → the app starts normally; the hook is inert.
+
+Two hard constraints:
+
+- **Native, not OTA.** The share registration compiles into the binary — `eas update` can never deliver it. It ships in an EAS build (batch with the long-pending `expo-mail-composer`), and every device must install the new binary manually. The JS half can go out ahead over OTA but is dead code on old binaries (the share intent simply never arrives).
+- **iOS is officially experimental.** Expo's receive support opens the main app target instead of a true share-extension ViewController — unsupported-by-Apple territory that a future iOS release could break. Android's intent-filter path is stable. Accept the risk for v1; the feature must fail gracefully on iOS if it breaks.
+
+Decided against on the way here (2026-09-19) — do not re-propose: an **in-app screenshot button**, including countdown-timer variants. `react-native-view-shot`/`captureRef` can only snapshot views inside the app's own mounted view hierarchy while foregrounded — capturing other apps or the OS screen crosses a sandbox boundary no permission grants, and there is no way to capture while the user is in another app or to programmatically return them. The hardware-screenshot → Share → PaperStack path delivers everything the button would have, with zero new dependencies and zero EAS build slots consumed.
 
 ---
 
@@ -432,3 +448,4 @@ Single-page PDF export moved *before* the N-up engine. The polyfill and image-em
 5. ~~Set up `expo-dev-client` and get an EAS development build onto your phone.~~ — done (dev builds in daily use; see `run.bat`).
 6. ~~Spike `react-native-document-scanner-plugin`~~ — **done, PASSED** (2026-09-14). Built under SDK 57 in the EAS dev build (commit `a4d35a7`), camera permission granted, ML Kit scanner UI launched, multi-page capture returned `scannedImages` file paths to JS. The plan's third-party-native risk is retired.
 7. ~~Extend `CLAUDE.md` with the §1 decisions and the §4 dependency list~~ — done; `CLAUDE.md` now carries the architecture map, locked decisions, and constraints, and is kept current.
+8. **Share-target import (§8).** Wire `expo-sharing`'s receive direction: the plugin block in `app.json`, `src/app/+native-intent.ts`, and an intake route that copies shared content URIs into `Documents/` before reusing `useSaveFlow`. The native registration must ride an EAS build — batch it with the still-pending `expo-mail-composer` — and existing preview installs need the new binary installed by hand; OTA alone cannot carry it.
